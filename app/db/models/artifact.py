@@ -8,7 +8,7 @@ from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
-
+from sqlalchemy import UniqueConstraint
 
 class ArtifactType(str, Enum):
     AUDIO = "AUDIO"
@@ -33,4 +33,8 @@ class Artifact(Base):
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("job_id", "type", name="uq_artifacts_job_type"),
     )
