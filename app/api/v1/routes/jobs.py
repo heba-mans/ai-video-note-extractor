@@ -1,0 +1,71 @@
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.orm import Session
+
+from app.api.deps import get_db
+from app.api.v1.schemas.jobs import JobCreateRequest, JobListResponse, JobResponse
+from app.db.repositories.jobs import count_jobs_for_user, get_job, list_jobs_for_user
+from app.services.dev_auth import get_or_create_demo_user
+from app.services.job_service import create_or_get_job_for_youtube
+
+router = APIRouter(tags=["Jobs"])
+
+
+@router.post("/jobs", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
+def create_job(payload: JobCreateRequest, db: Session = Depends(get_db)) -> JobResponse:
+    """
+    Create a processing job for a YouTube URL.
+
+    Idempotent behavior:
+    same user + same video + same params => returns existing job.
+    """
+    user = get_or_create_demo_user(db)
+
+    try:
+        job = create_or_get_job_for_youtube(
+            db,
+            user_id=user.id,
+            youtube_url=payload.youtube_url,
+            params=payload.params,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    # If it already existed, returning 201 is still acceptable for portfolio,
+    # but if you want to be strict you can return 200 when existing.
+    return JobResponse.model_validate(job)
+
+
+@router.get("/jobs/{job_id}", response_model=JobResponse)
+def get_job_status(job_id: UUID, db: Session = Depends(get_db)) -> JobResponse:
+    """
+    Fetch job status/result metadata.
+    """
+    user = get_or_create_demo_user(db)
+
+    job = get_job(db, job_id)
+    if not job or job.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    return JobResponse.model_validate(job)
+
+
+@router.get("/jobs", response_model=JobListResponse)
+def list_jobs(
+    db: Session = Depends(get_db),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+) -> JobListResponse:
+    """
+    List jobs for the current user (demo user for now).
+    """
+    user = get_or_create_demo_user(db)
+
+    items = list_jobs_for_user(db, user.id, limit=limit, offset=offset)
+    total = count_jobs_for_user(db, user.id)
+
+    return JobListResponse(
+        items=[JobResponse.model_validate(j) for j in items],
+        total=total,
+    )

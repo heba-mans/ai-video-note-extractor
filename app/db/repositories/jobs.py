@@ -5,6 +5,8 @@ from sqlalchemy.exc import IntegrityError
 
 from app.db.models.job import Job
 
+from sqlalchemy import desc
+
 def create_job(
     db: Session,
     user_id,
@@ -53,3 +55,17 @@ def create_job_safe(db: Session, job: Job) -> Job:
         if existing is None:
             raise
         return existing
+    
+def list_jobs_for_user(db: Session, user_id, limit: int = 50, offset: int = 0) -> list[Job]:
+    return (
+        db.query(Job)
+        .filter(Job.user_id == user_id)
+        .order_by(desc(Job.requested_at))
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+
+def count_jobs_for_user(db: Session, user_id) -> int:
+    return db.query(Job).filter(Job.user_id == user_id).count()
