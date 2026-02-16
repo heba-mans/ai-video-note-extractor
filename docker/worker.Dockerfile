@@ -5,14 +5,14 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-RUN true
-
-COPY . /app
+COPY requirements.txt /app/requirements.txt
 
 RUN python -m venv /venv
 ENV PATH="/venv/bin:$PATH"
 
 RUN pip install --upgrade pip
+RUN pip install -r /app/requirements.txt
 
-# We will install Celery later
+COPY . /app
+
 CMD ["sleep", "infinity"]
