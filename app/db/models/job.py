@@ -67,5 +67,5 @@ class Job(Base):
     last_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships (optional now; useful later)
-    user = relationship("User", lazy="joined")
-    video = relationship("Video", lazy="joined")
+    user = relationship("User", lazy="selectin")
+    video = relationship("Video", lazy="selectin")

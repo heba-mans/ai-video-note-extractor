@@ -7,7 +7,7 @@ services:
     ports:
       - "8000:8000"
     env_file:
-      - .env
+      - .env.docker
     depends_on:
       - postgres
       - redis
@@ -18,7 +18,7 @@ services:
       dockerfile: docker/worker.Dockerfile
     container_name: ai-video-worker
     env_file:
-      - .env
+      - .env.docker
     depends_on:
       - postgres
       - redis
