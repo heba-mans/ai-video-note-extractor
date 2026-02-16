@@ -41,3 +41,12 @@ def log_error(db: Session, job: Job, message: str, meta: dict[str, Any] | None =
         message=message,
         meta=meta,
     )
+
+def log_retry(db, job, message: str, meta: dict | None = None) -> None:
+    create_job_event(
+        db,
+        job_id=job.id,
+        type=JobEventType.RETRY.value,
+        message=message,
+        meta=meta,
+    )
