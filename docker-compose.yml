@@ -22,6 +22,7 @@ services:
     depends_on:
       - postgres
       - redis
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO
 
   postgres:
     image: postgres:15
