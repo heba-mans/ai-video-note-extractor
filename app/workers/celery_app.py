@@ -13,7 +13,7 @@ celery_app = Celery(
     "ai_video_note_extractor",
     broker=settings.redis_url,
     backend=settings.redis_url,  # OK for portfolio; later can use DB backend if desired
-    include=["app.workers.tasks.debug"],
+    include=["app.workers.tasks.debug", "app.workers.tasks.process_job"],
 )
 
 # Celery runtime settings

@@ -8,6 +8,7 @@ from app.api.v1.schemas.jobs import JobCreateRequest, JobListResponse, JobRespon
 from app.db.repositories.jobs import count_jobs_for_user, get_job, list_jobs_for_user
 from app.services.dev_auth import get_or_create_demo_user
 from app.services.job_service import create_or_get_job_for_youtube
+from app.workers.celery_app import celery_app
 
 router = APIRouter(tags=["Jobs"])
 
@@ -32,8 +33,12 @@ def create_job(payload: JobCreateRequest, db: Session = Depends(get_db)) -> JobR
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
-    # If it already existed, returning 201 is still acceptable for portfolio,
-    # but if you want to be strict you can return 200 when existing.
+    # Enqueue processing (safe under idempotency; worker will skip if job not QUEUED)
+    celery_app.send_task(
+        "app.workers.tasks.process_job.process_job",
+        args=[str(job.id)],
+    )
+
     return JobResponse.model_validate(job)
 
 
