@@ -15,6 +15,8 @@ from app.db.repositories.jobs import get_job_for_update, update_job_fields
 from app.services.job_events_service import log_error, log_status_change
 from app.db.models.job import Job
 from app.services.job_events_service import log_retry
+from app.services.job_progress_service import set_job_progress
+from app.services.job_progress import PROGRESS_STEPS
 
 logger = get_logger()
 
@@ -68,20 +70,24 @@ def process_job(self, job_id: str) -> dict[str, str]:
         # Claim start
         update_job_fields(db, job, started_at=_utcnow(), progress=0)
 
-        # Stage 1: DOWNLOADING
-        _set_status(db, job, JobStatus.DOWNLOADING.value, stage="download_audio", progress=10)
+        step = PROGRESS_STEPS["download_audio"]
+        set_job_progress(db, job=job, status=step.status, stage=step.stage, progress=step.progress)
         time.sleep(1)
 
-        # Stage 2: TRANSCRIBING
-        _set_status(db, job, JobStatus.TRANSCRIBING.value, stage="transcribe", progress=40)
+        step = PROGRESS_STEPS["download_audio"]
+        set_job_progress(db, job=job, status=step.status, stage=step.stage, progress=step.progress)
         time.sleep(1)
 
-        # Stage 3: SUMMARIZING
-        _set_status(db, job, JobStatus.SUMMARIZING.value, stage="summarize", progress=75)
+        step = PROGRESS_STEPS["transcribe"]
+        set_job_progress(db, job=job, status=step.status, stage=step.stage, progress=step.progress)
         time.sleep(1)
 
-        # Complete
-        _set_status(db, job, JobStatus.COMPLETED.value, stage="finalize", progress=100)
+        step = PROGRESS_STEPS["summarize"]
+        set_job_progress(db, job=job, status=step.status, stage=step.stage, progress=step.progress)
+        time.sleep(1)
+
+        step = PROGRESS_STEPS["finalize"]
+        set_job_progress(db, job=job, status=step.status, stage=step.stage, progress=step.progress)
         update_job_fields(db, job, completed_at=_utcnow())
 
         logger.info("job.process.completed", job_id=job_id)

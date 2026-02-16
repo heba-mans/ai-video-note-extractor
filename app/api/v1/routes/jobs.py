@@ -9,6 +9,7 @@ from app.db.repositories.jobs import count_jobs_for_user, get_job, list_jobs_for
 from app.services.dev_auth import get_or_create_demo_user
 from app.services.job_service import create_or_get_job_for_youtube
 from app.workers.celery_app import celery_app
+from app.api.v1.schemas.job_progress import JobProgressResponse
 
 router = APIRouter(tags=["Jobs"])
 
@@ -74,3 +75,13 @@ def list_jobs(
         items=[JobResponse.model_validate(j) for j in items],
         total=total,
     )
+
+@router.get("/jobs/{job_id}/progress", response_model=JobProgressResponse)
+def get_job_progress(job_id: UUID, db: Session = Depends(get_db)) -> JobProgressResponse:
+    user = get_or_create_demo_user(db)
+
+    job = get_job(db, job_id)
+    if not job or job.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    return JobProgressResponse.model_validate(job)
