@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import time
 import traceback
 from datetime import datetime
 from uuid import UUID
@@ -17,6 +16,7 @@ from app.db.models.job import Job
 from app.services.job_events_service import log_retry
 from app.services.job_progress_service import set_job_progress
 from app.services.job_progress import PROGRESS_STEPS
+from app.workers.tasks.download_audio import download_audio
 
 logger = get_logger()
 
@@ -72,19 +72,19 @@ def process_job(self, job_id: str) -> dict[str, str]:
 
         step = PROGRESS_STEPS["download_audio"]
         set_job_progress(db, job=job, status=step.status, stage=step.stage, progress=step.progress)
-        time.sleep(1)
+        download_audio(str(job.id))
 
         step = PROGRESS_STEPS["download_audio"]
         set_job_progress(db, job=job, status=step.status, stage=step.stage, progress=step.progress)
-        time.sleep(1)
+        download_audio(str(job.id))
 
         step = PROGRESS_STEPS["transcribe"]
         set_job_progress(db, job=job, status=step.status, stage=step.stage, progress=step.progress)
-        time.sleep(1)
+        download_audio(str(job.id))
 
         step = PROGRESS_STEPS["summarize"]
         set_job_progress(db, job=job, status=step.status, stage=step.stage, progress=step.progress)
-        time.sleep(1)
+        download_audio(str(job.id))
 
         step = PROGRESS_STEPS["finalize"]
         set_job_progress(db, job=job, status=step.status, stage=step.stage, progress=step.progress)

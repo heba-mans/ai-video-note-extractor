@@ -7,3 +7,4 @@ alembic
 psycopg[binary]
 celery
 redis
+yt-dlp

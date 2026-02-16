@@ -11,6 +11,8 @@ services:
     depends_on:
       - postgres
       - redis
+    volumes:
+      - job_data:/app/data
 
   worker:
     build:
@@ -23,6 +25,8 @@ services:
       - postgres
       - redis
     command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO
+    volumes:
+      - job_data:/app/data
 
   postgres:
     image: postgres:15
@@ -44,3 +48,4 @@ services:
 
 volumes:
   postgres_data:
+  job_data:
