@@ -16,6 +16,7 @@ from app.db.session import SessionLocal
 from app.services.job_events_service import log_error
 from app.services.job_progress import PROGRESS_STEPS
 from app.services.job_progress_service import set_job_progress
+from app.db.repositories.transcript_segments import replace_segments_for_job
 
 logger = get_logger()
 
