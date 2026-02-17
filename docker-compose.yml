@@ -13,6 +13,7 @@ services:
       - redis
     volumes:
       - job_data:/app/data
+      - whisper_models:/app/models
 
   worker:
     build:
@@ -49,3 +50,4 @@ services:
 volumes:
   postgres_data:
   job_data:
+  whisper_models:

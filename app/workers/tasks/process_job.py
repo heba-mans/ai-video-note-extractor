@@ -15,6 +15,7 @@ from app.services.job_events_service import log_error, log_retry
 from app.services.job_progress import PROGRESS_STEPS
 from app.services.job_progress_service import set_job_progress
 from app.workers.tasks.download_audio import download_audio
+from app.workers.tasks.transcribe_audio import transcribe_audio
 
 logger = get_logger()
 
@@ -57,20 +58,19 @@ def process_job(self, job_id: str) -> dict[str, str]:
         # Mark started
         update_job_fields(db, job, started_at=_utcnow(), progress=0)
 
-        # Stage: download audio
+        # Download audio
         step = PROGRESS_STEPS["download_audio"]
         set_job_progress(db, job=job, status=step.status, stage=step.stage, progress=step.progress)
-        download_audio(str(job.id))  # direct call for now (simple). Later: chain tasks.
+        download_audio(str(job.id))
 
-        # Stage: transcribe (placeholder for TRANS-3)
+        # Transcribe audio (faster-whisper)
         step = PROGRESS_STEPS["transcribe"]
         set_job_progress(db, job=job, status=step.status, stage=step.stage, progress=step.progress)
-        # TODO: transcribe_audio(job_id)
+        transcribe_audio(str(job.id))
 
-        # Stage: summarize (placeholder for SUM)
+        # Summarize (placeholder for now)
         step = PROGRESS_STEPS["summarize"]
         set_job_progress(db, job=job, status=step.status, stage=step.stage, progress=step.progress)
-        # TODO: summarize(job_id)
 
         # Finalize
         step = PROGRESS_STEPS["finalize"]
