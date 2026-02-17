@@ -16,3 +16,4 @@ RUN pip install -r /app/requirements.txt
 COPY . /app
 
 CMD ["sleep", "infinity"]
+RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
