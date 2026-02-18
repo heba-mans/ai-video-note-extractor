@@ -14,9 +14,10 @@ from app.db.repositories.jobs import get_job_for_update, update_job_fields
 from app.db.repositories.transcript_segments import delete_segments_for_job, insert_segments
 from app.db.session import SessionLocal
 from app.services.job_events_service import log_error
+from app.services.transcript_chunking_service import build_transcript_chunks
+from app.db.repositories.transcript_chunks import delete_chunks_for_job, insert_chunks
 from app.services.job_progress import PROGRESS_STEPS
 from app.services.job_progress_service import set_job_progress
-from app.db.repositories.transcript_segments import replace_segments_for_job
 
 logger = get_logger()
 
@@ -73,6 +74,7 @@ def transcribe_audio(self, job_id: str) -> dict[str, str]:
 
         # Clear existing transcript segments if re-run
         delete_segments_for_job(db, job.id)
+        delete_chunks_for_job(db, job.id)
 
         model = get_model()
 
@@ -99,8 +101,21 @@ def transcribe_audio(self, job_id: str) -> dict[str, str]:
 
         insert_segments(db, job.id, segments_to_insert)
 
-        logger.info("transcribe.done", job_id=job_id, segments=len(segments_to_insert))
-        return {"status": "ok", "segments": str(len(segments_to_insert))}
+        # ✅ Build + persist chunks (TRANS-5)
+        chunks = build_transcript_chunks(segments_to_insert)
+        if not chunks:
+            raise RuntimeError("No transcript chunks produced")
+
+        insert_chunks(db, job.id, chunks)
+        db.commit()
+
+        logger.info(
+            "transcribe.done",
+            job_id=job_id,
+            segments=len(segments_to_insert),
+            chunks=len(chunks),
+        )
+        return {"status": "ok", "segments": str(len(segments_to_insert)), "chunks": str(len(chunks))}
 
     except Exception as e:
         db.rollback()

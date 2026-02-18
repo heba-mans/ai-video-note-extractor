@@ -56,11 +56,16 @@ def process_job(self, job_id: str) -> dict[str, str]:
             raise RuntimeError("Simulated transient failure (fail_once)")
 
         # Mark started
-        update_job_fields(db, job, started_at=_utcnow(), progress=0)
+        update_job_fields(
+            db,
+            job,
+            started_at=_utcnow(),
+            status=JobStatus.DOWNLOADING.value,
+            stage="download_audio",
+            progress=10,
+        )
 
         # Download audio
-        step = PROGRESS_STEPS["download_audio"]
-        set_job_progress(db, job=job, status=step.status, stage=step.stage, progress=step.progress)
         download_audio(str(job.id))
 
         # Transcribe audio (faster-whisper)

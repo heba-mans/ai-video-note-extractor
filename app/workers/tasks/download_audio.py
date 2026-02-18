@@ -65,6 +65,10 @@ def download_audio(self, job_id: str) -> dict[str, str]:
             "noplaylist": True,
             "quiet": True,
             "no_warnings": True,
+
+            # ✅ FIX: avoid .part rename race / FS issues
+            "nopart": True,
+            "overwrites": True,
         }
 
         with YoutubeDL(ydl_opts) as ydl:
