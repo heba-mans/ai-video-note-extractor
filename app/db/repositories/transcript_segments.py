@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.db.models.transcript_segment import TranscriptSegment
 
 from typing import Iterable
+from sqlalchemy import func
 
 
 def replace_segments_for_job(db: Session, job_id, segments: list[dict]) -> int:
@@ -98,3 +99,22 @@ def replace_segments_for_job(
 ):
     delete_segments_for_job(db, job_id)
     insert_segments(db, job_id, segments)
+
+def count_segments_for_job(db: Session, job_id) -> int:
+    return int(
+        db.query(func.count(TranscriptSegment.id))
+        .filter(TranscriptSegment.job_id == job_id)
+        .scalar()
+        or 0
+    )
+
+
+def list_segments_for_job(db: Session, job_id, *, limit: int, offset: int) -> list[TranscriptSegment]:
+    return (
+        db.query(TranscriptSegment)
+        .filter(TranscriptSegment.job_id == job_id)
+        .order_by(TranscriptSegment.idx.asc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
