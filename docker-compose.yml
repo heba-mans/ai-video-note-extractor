@@ -29,6 +29,7 @@ services:
     command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO
     volumes:
       - job_data:/app/data
+      - .:/app
 
   postgres:
     image: postgres:15

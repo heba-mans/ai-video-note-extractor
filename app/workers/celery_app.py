@@ -23,6 +23,7 @@ celery_app = Celery(
         "app.workers.tasks.format_markdown",
         "app.workers.tasks.extract_chapters",
         "app.workers.tasks.extract_key_takeaways",
+        "app.workers.tasks.extract_action_items",
     ],
 )
 
