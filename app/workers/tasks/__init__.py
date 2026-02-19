@@ -1,1 +1,2 @@
 from app.workers.tasks.map_summarize import map_summarize_job
+from app.workers.tasks.reduce_summarize import reduce_summarize_job
