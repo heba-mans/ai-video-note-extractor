@@ -116,17 +116,29 @@ def download_audio(self, job_id: str) -> dict[str, str]:
         db.rollback()
         logger.exception("audio.download.failed", job_id=job_id)
 
-        # Persist failure info
-        try:
-            job = db.query(Job).filter(Job.id == UUID(job_id)).one_or_none()
-            if job:
+        attempt = int(getattr(self.request, "retries", 0))
+        max_retries = int(getattr(self, "max_retries", 3))
+        is_last_attempt = attempt >= max_retries
+
+        job = db.query(Job).filter(Job.id == UUID(job_id)).one_or_none()
+        if job:
+            update_job_fields(
+                db,
+                job,
+                retry_count=(job.retry_count or 0) + 1,
+                error_code=type(e).__name__,
+                error_message=str(e),
+            )
+
+            if is_last_attempt:
                 update_job_fields(db, job, status=JobStatus.FAILED.value, stage="download_failed")
                 log_error(db, job, message="Audio download failed", meta={"error": str(e)})
-        finally:
-            db.close()
 
-        # Retry with exponential backoff
-        attempt = int(getattr(self.request, "retries", 0))
+        db.close()
+
+        if is_last_attempt:
+            raise
+
         raise self.retry(exc=e, countdown=2**attempt)
 
     finally:

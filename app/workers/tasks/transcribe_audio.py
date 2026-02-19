@@ -121,15 +121,27 @@ def transcribe_audio(self, job_id: str) -> dict[str, str]:
         db.rollback()
         logger.exception("transcribe.failed", job_id=job_id)
 
-        try:
-            job = db.query(Job).filter(Job.id == UUID(job_id)).one_or_none()
-            if job:
+        attempt = int(getattr(self.request, "retries", 0))
+        max_retries = int(getattr(self, "max_retries", 3))
+        is_last_attempt = attempt >= max_retries
+
+        job = db.query(Job).filter(Job.id == UUID(job_id)).one_or_none()
+        if job:
+            update_job_fields(
+                db,
+                job,
+                retry_count=(job.retry_count or 0) + 1,
+                error_code=type(e).__name__,
+                error_message=str(e),
+            )
+
+            if is_last_attempt:
                 update_job_fields(db, job, status=JobStatus.FAILED.value, stage="transcribe_failed")
                 log_error(db, job, message="Transcription failed", meta={"error": str(e)})
-        finally:
-            db.close()
 
-        attempt = int(getattr(self.request, "retries", 0))
+        if is_last_attempt:
+            raise
+
         raise self.retry(exc=e, countdown=2**attempt)
 
     finally:
