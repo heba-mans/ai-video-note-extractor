@@ -5,3 +5,4 @@ from app.db.models.job_event import JobEvent  # noqa: F401
 from app.db.models.artifact import Artifact  # noqa: F401
 from app.db.models.transcript_segment import TranscriptSegment  # noqa: F401
 from app.db.models.transcript_chunk import TranscriptChunk
+from app.db.models.map_summary import MapSummary
