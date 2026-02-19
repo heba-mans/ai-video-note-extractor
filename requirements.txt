@@ -9,3 +9,4 @@ celery
 redis
 yt-dlp
 faster-whisper
+openai
