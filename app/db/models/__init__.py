@@ -9,3 +9,4 @@ from app.db.models.map_summary import MapSummary
 from app.db.models.reduce_summary import ReduceSummary
 from app.db.models.formatted_result import FormattedResult
 from app.db.models.chapter import Chapter
+from app.db.models.key_takeaway import KeyTakeaway

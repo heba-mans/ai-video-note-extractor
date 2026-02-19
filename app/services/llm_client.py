@@ -142,3 +142,30 @@ class LLMClient:
             ],
         )
         return (resp.output_text or "").strip()
+    
+    def extract_key_takeaways(self, summary_md: str) -> list[str]:
+        if self.mock:
+            return [
+                "The video humorously compares gym culture to a muscular kangaroo.",
+                "Physical exaggeration is used as a comedic device.",
+                "Animal behavior is reframed through human gym stereotypes.",
+            ]
+
+        resp = self.client.responses.create(
+            model="gpt-4.1-mini",
+            input=f"""
+    Extract 3-7 concise key takeaways from the following summary.
+    Return them as a plain bullet list.
+
+    Summary:
+    {summary_md}
+    """
+        )
+
+        text = resp.output[0].content[0].text
+
+        return [
+            line.strip("- ").strip()
+            for line in text.split("\n")
+            if line.strip()
+        ]
