@@ -169,3 +169,30 @@ class LLMClient:
             for line in text.split("\n")
             if line.strip()
         ]
+    
+    def extract_action_items(self, summary_md: str) -> list[dict]:
+        """
+        Returns list of dicts:
+        {content, owner (optional), due_date (optional)}
+        """
+        if self.mock:
+            return [
+                {"content": "Draft a short written summary of the video for sharing.", "owner": None, "due_date": None},
+                {"content": "Create a social post highlighting the funniest moment.", "owner": None, "due_date": None},
+                {"content": "Add chapters + takeaways into the final notes export.", "owner": None, "due_date": None},
+            ]
+
+        resp = self.client.responses.create(
+            model=self.model,
+            input=[
+                {"role": "system", "content": "Extract actionable follow-ups from summaries. Output JSON only."},
+                {"role": "user", "content": (
+                    "Extract 3-8 action items from this summary.\n"
+                    "Return STRICT JSON array of objects with keys: content, owner (nullable), due_date (nullable).\n\n"
+                    f"{summary_md}"
+                )},
+            ],
+        )
+        text = (resp.output_text or "").strip()
+        import json
+        return json.loads(text)
