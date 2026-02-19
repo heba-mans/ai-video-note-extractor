@@ -21,6 +21,7 @@ celery_app = Celery(
         "app.workers.tasks.map_summarize",
         "app.workers.tasks.reduce_summarize",
         "app.workers.tasks.format_markdown",
+        "app.workers.tasks.extract_chapters",
     ],
 )
 
