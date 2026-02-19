@@ -69,8 +69,6 @@ def process_job(self, job_id: str) -> dict[str, str]:
         download_audio(str(job.id))
 
         # Transcribe audio (faster-whisper)
-        step = PROGRESS_STEPS["transcribe"]
-        set_job_progress(db, job=job, status=step.status, stage=step.stage, progress=step.progress)
         transcribe_audio(str(job.id))
 
         # Summarize (placeholder for now)
