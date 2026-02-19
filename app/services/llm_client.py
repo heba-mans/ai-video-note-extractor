@@ -101,3 +101,44 @@ class LLMClient:
             ],
         )
         return (resp.output_text or "").strip()
+    
+    def extract_chapters(self, *, map_summaries_md: str) -> str:
+        """
+        Return markdown with chapters in a strict format:
+        ### M:SS - M:SS | Title
+        - bullet
+        """
+        if self.mock:
+            return (
+                "### 0:00 - 4:13 | Overview\n"
+                "- (MOCK) High-level intro and main beats\n"
+            )
+
+        resp = self.client.responses.create(
+            model=self.model,
+            input=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You create chapters with timestamps from summaries. "
+                        "Output must be markdown, one chapter per heading."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        "Create 3–8 chapters with timestamps based on the following chunk summaries.\n\n"
+                        "Format STRICTLY like:\n"
+                        "### M:SS - M:SS | Chapter Title\n"
+                        "- bullet\n"
+                        "- bullet\n\n"
+                        "Rules:\n"
+                        "- Chapter boundaries must be chronological\n"
+                        "- Use timestamps within the video duration implied by the chunks\n"
+                        "- Keep titles short\n\n"
+                        f"{map_summaries_md}"
+                    ),
+                },
+            ],
+        )
+        return (resp.output_text or "").strip()
