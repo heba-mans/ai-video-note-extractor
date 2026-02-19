@@ -10,6 +10,13 @@ from app.services.dev_auth import get_or_create_demo_user
 from app.services.job_service import create_or_get_job_for_youtube
 from app.workers.celery_app import celery_app
 from app.api.v1.schemas.job_progress import JobProgressResponse
+from fastapi import Query
+from app.schemas.transcript import TranscriptPageOut, TranscriptSegmentOut
+from app.db.repositories.transcript_segments import count_segments_for_job, list_segments_for_job
+from uuid import UUID
+from fastapi import Depends, HTTPException
+from sqlalchemy.orm import Session
+from app.db.models.job import Job
 
 router = APIRouter(tags=["Jobs"])
 
@@ -85,3 +92,40 @@ def get_job_progress(job_id: UUID, db: Session = Depends(get_db)) -> JobProgress
         raise HTTPException(status_code=404, detail="Job not found")
 
     return JobProgressResponse.model_validate(job)
+
+@router.get("/jobs/{job_id}/transcript", response_model=TranscriptPageOut)
+def get_job_transcript(
+    job_id: str,
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+):
+    # Ensure job exists (reuse your existing pattern)
+    job_uuid = UUID(job_id)
+    job = db.query(Job).filter(Job.id == job_uuid).one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    total = count_segments_for_job(db, job_uuid)
+    rows = list_segments_for_job(db, job_uuid, limit=limit, offset=offset)
+
+    items = [
+        TranscriptSegmentOut(
+            idx=r.idx,
+            start_ms=r.start_ms,
+            end_ms=r.end_ms,
+            text=r.text,
+        )
+        for r in rows
+    ]
+
+    next_offset = offset + limit if (offset + limit) < total else None
+
+    return TranscriptPageOut(
+        job_id=job_id,
+        total=total,
+        limit=limit,
+        offset=offset,
+        next_offset=next_offset,
+        items=items,
+    )
