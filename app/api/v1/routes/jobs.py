@@ -13,10 +13,15 @@ from app.api.v1.schemas.job_progress import JobProgressResponse
 from fastapi import Query
 from app.schemas.transcript import TranscriptPageOut, TranscriptSegmentOut
 from app.db.repositories.transcript_segments import count_segments_for_job, list_segments_for_job
-from uuid import UUID
 from fastapi import Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.db.models.job import Job
+
+from fastapi import HTTPException
+
+from app.db.repositories.final_results import get_final_result
+from app.schemas.results import JobResultsOut
+from app.db.models.job import JobStatus
 
 router = APIRouter(tags=["Jobs"])
 
@@ -129,3 +134,27 @@ def get_job_transcript(
         next_offset=next_offset,
         items=items,
     )
+
+@router.get("/jobs/{job_id}/results", response_model=JobResultsOut)
+def get_job_results(job_id: str, db: Session = Depends(get_db)):
+    # Validate UUID
+    try:
+        job_uuid = UUID(job_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid job_id")
+
+    # Ensure job exists
+    job = db.query(Job).filter(Job.id == job_uuid).one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    # If job failed, surface that
+    if job.status == JobStatus.FAILED.value:
+        raise HTTPException(status_code=409, detail="Job failed; results unavailable")
+
+    final = get_final_result(db, job_uuid)
+    if final is None:
+        # results not ready yet
+        raise HTTPException(status_code=404, detail="Results not ready")
+
+    return JobResultsOut(job_id=job_id, payload=final.payload_json)
