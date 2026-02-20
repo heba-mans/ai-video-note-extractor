@@ -22,6 +22,8 @@ from fastapi import HTTPException
 from app.db.repositories.final_results import get_final_result
 from app.schemas.results import JobResultsOut
 from app.db.models.job import JobStatus
+from fastapi.responses import PlainTextResponse
+from app.schemas.export import MarkdownExportOut
 
 router = APIRouter(tags=["Jobs"])
 
@@ -158,3 +160,42 @@ def get_job_results(job_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Results not ready")
 
     return JobResultsOut(job_id=job_id, payload=final.payload_json)
+
+@router.get(
+    "/jobs/{job_id}/export/markdown",
+    responses={200: {"content": {"text/markdown": {}}}},
+)
+def export_job_markdown(
+    job_id: str,
+    format: str = Query("raw", pattern="^(raw|json)$"),
+    db: Session = Depends(get_db),
+):
+    # Validate UUID
+    try:
+        job_uuid = UUID(job_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid job_id")
+
+    # Ensure job exists
+    job = db.query(Job).filter(Job.id == job_uuid).one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job.status == JobStatus.FAILED.value:
+        raise HTTPException(status_code=409, detail="Job failed; export unavailable")
+
+    final = get_final_result(db, job_uuid)
+    if final is None:
+        raise HTTPException(status_code=404, detail="Results not ready")
+
+    markdown = (final.payload_json or {}).get("formatted_markdown")
+    if not markdown:
+        raise HTTPException(status_code=404, detail="Markdown not ready")
+
+    if format == "json":
+        return MarkdownExportOut(job_id=job_id, markdown=markdown)
+
+    # raw markdown response (best UX for exporting)
+    filename = f"job-{job_id}.md"
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    return PlainTextResponse(markdown, media_type="text/markdown", headers=headers)
