@@ -26,6 +26,8 @@ from fastapi.responses import PlainTextResponse
 from app.schemas.export import MarkdownExportOut
 from app.schemas.transcript import TranscriptPageOut
 from app.db.repositories.transcript import count_segments, fetch_segments_page
+from app.schemas.transcript_search import TranscriptSearchResponse, TranscriptSearchHit
+from app.db.repositories.transcript_search import count_search_hits, search_segments
 
 router = APIRouter(tags=["Jobs"])
 
@@ -200,4 +202,32 @@ def get_job_transcript(
         offset=offset,
         next_offset=next_offset,
         items=items,
+    )
+
+@router.get("/jobs/{job_id}/transcript/search", response_model=TranscriptSearchResponse)
+def search_job_transcript(
+    job_id: UUID,
+    q: str = Query(..., min_length=1),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+):
+    # confirm job exists
+    job = db.query(Job).filter(Job.id == job_id).one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    total = count_search_hits(db, job_id, q)
+    rows = search_segments(db, job_id, q, limit=limit, offset=offset)
+
+    next_offset = offset + limit if (offset + limit) < total else None
+
+    return TranscriptSearchResponse(
+        job_id=str(job_id),
+        query=q,
+        total=total,
+        limit=limit,
+        offset=offset,
+        next_offset=next_offset,
+        items=[TranscriptSearchHit(**r) for r in rows],
     )
