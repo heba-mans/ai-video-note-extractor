@@ -24,6 +24,8 @@ from app.schemas.results import JobResultsOut
 from app.db.models.job import JobStatus
 from fastapi.responses import PlainTextResponse
 from app.schemas.export import MarkdownExportOut
+from app.schemas.transcript import TranscriptPageOut
+from app.db.repositories.transcript import count_segments, fetch_segments_page
 
 router = APIRouter(tags=["Jobs"])
 
@@ -100,43 +102,6 @@ def get_job_progress(job_id: UUID, db: Session = Depends(get_db)) -> JobProgress
 
     return JobProgressResponse.model_validate(job)
 
-@router.get("/jobs/{job_id}/transcript", response_model=TranscriptPageOut)
-def get_job_transcript(
-    job_id: str,
-    limit: int = Query(100, ge=1, le=500),
-    offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db),
-):
-    # Ensure job exists (reuse your existing pattern)
-    job_uuid = UUID(job_id)
-    job = db.query(Job).filter(Job.id == job_uuid).one_or_none()
-    if job is None:
-        raise HTTPException(status_code=404, detail="Job not found")
-
-    total = count_segments_for_job(db, job_uuid)
-    rows = list_segments_for_job(db, job_uuid, limit=limit, offset=offset)
-
-    items = [
-        TranscriptSegmentOut(
-            idx=r.idx,
-            start_ms=r.start_ms,
-            end_ms=r.end_ms,
-            text=r.text,
-        )
-        for r in rows
-    ]
-
-    next_offset = offset + limit if (offset + limit) < total else None
-
-    return TranscriptPageOut(
-        job_id=job_id,
-        total=total,
-        limit=limit,
-        offset=offset,
-        next_offset=next_offset,
-        items=items,
-    )
-
 @router.get("/jobs/{job_id}/results", response_model=JobResultsOut)
 def get_job_results(job_id: str, db: Session = Depends(get_db)):
     # Validate UUID
@@ -199,3 +164,40 @@ def export_job_markdown(
     filename = f"job-{job_id}.md"
     headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
     return PlainTextResponse(markdown, media_type="text/markdown", headers=headers)
+
+@router.get("/jobs/{job_id}/transcript", response_model=TranscriptPageOut)
+def get_job_transcript(
+    job_id: str,
+    limit: int = 50,
+    offset: int = 0,
+    db: Session = Depends(get_db),
+):
+    # validate uuid
+    try:
+        job_uuid = UUID(job_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid job_id")
+
+    if limit < 1 or limit > 200:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 200")
+    if offset < 0:
+        raise HTTPException(status_code=400, detail="offset must be >= 0")
+
+    # confirm job exists
+    job = db.query(Job).filter(Job.id == job_uuid).one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    total = count_segments(db, job_uuid)
+    items = fetch_segments_page(db, job_uuid, limit=limit, offset=offset)
+
+    next_offset = offset + limit if (offset + limit) < total else None
+
+    return TranscriptPageOut(
+        job_id=job_id,
+        total=total,
+        limit=limit,
+        offset=offset,
+        next_offset=next_offset,
+        items=items,
+    )
