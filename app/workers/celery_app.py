@@ -24,6 +24,7 @@ celery_app = Celery(
         "app.workers.tasks.extract_chapters",
         "app.workers.tasks.extract_key_takeaways",
         "app.workers.tasks.extract_action_items",
+        "app.workers.tasks.persist_final_results",
     ],
 )
 
