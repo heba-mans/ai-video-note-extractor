@@ -8,6 +8,7 @@ from openai import OpenAI
 class LLMClient:
     def __init__(self) -> None:
         self.mock = os.getenv("LLM_MOCK", "0") == "1"
+        self.fail_once = os.getenv("LLM_FAIL_ONCE", "0") == "1"
 
         api_key = os.getenv("OPENAI_API_KEY")
         self.model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
@@ -65,6 +66,11 @@ class LLMClient:
         """
         Combine multiple chunk summaries into one coherent final markdown summary.
         """
+
+        if getattr(self, "fail_once", False):
+            self.fail_once = False
+            raise RuntimeError("timeout: simulated transient LLM failure")
+
         if self.mock:
             preview = " ".join(map_summaries_md.split())[:700]
             return (
