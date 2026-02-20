@@ -8,6 +8,13 @@ from sqlalchemy import text
 from app.core.logging import get_logger
 from app.db.repositories.final_results import upsert_final_result
 from app.db.session import SessionLocal
+import traceback
+from uuid import UUID
+
+from app.db.models.job import Job, JobStatus
+from app.db.repositories.jobs import update_job_fields
+from app.services.job_events_service import log_error, log_retry
+from app.services.llm_retry_service import is_retryable_llm_error, retry_delay_seconds
 
 logger = get_logger()
 
@@ -88,8 +95,48 @@ def persist_final_results_job(self, job_id: str) -> dict[str, str]:
     except Exception as e:
         db.rollback()
         logger.exception("sum.final.failed", job_id=job_id)
+
         attempt = int(getattr(self.request, "retries", 0))
-        raise self.retry(exc=e, countdown=2**attempt)
+        max_retries = int(getattr(self, "max_retries", 3))
+        is_last_attempt = attempt >= max_retries
+        retryable = is_retryable_llm_error(e)
+
+        trace = traceback.format_exc()
+        job = db.query(Job).filter(Job.id == UUID(job_id)).one_or_none()
+        if job:
+            update_job_fields(
+                db,
+                job,
+                error_code=type(e).__name__,
+                error_message=str(e),
+                error_trace=trace,
+            )
+
+            if retryable and not is_last_attempt:
+                log_retry(
+                    db,
+                    job,
+                    message="Retrying final results persistence after transient failure",
+                    meta={"error": str(e), "attempt": attempt + 1, "max_retries": max_retries},
+                )
+            else:
+                update_job_fields(
+                    db,
+                    job,
+                    status=JobStatus.FAILED.value,
+                    stage="summarize_failed",
+                )
+                log_error(
+                    db,
+                    job,
+                    message="Final results persistence failed",
+                    meta={"error": str(e), "attempt": attempt, "max_retries": max_retries},
+                )
+
+        if retryable and not is_last_attempt:
+            raise self.retry(exc=e, countdown=retry_delay_seconds(attempt))
+
+        raise
 
     finally:
         db.close()
