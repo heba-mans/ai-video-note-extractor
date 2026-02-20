@@ -17,3 +17,6 @@ def upsert_final_result(db: Session, job_id, *, payload_json: dict) -> None:
         row.updated_at = now
 
     db.flush()
+
+def get_final_result(db: Session, job_id) -> FinalResult | None:
+    return db.query(FinalResult).filter(FinalResult.job_id == job_id).one_or_none()
