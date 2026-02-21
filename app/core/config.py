@@ -21,5 +21,9 @@ class Settings(BaseSettings):
     jwt_algorithm: str = Field("HS256", alias="JWT_ALGORITHM")
     jwt_expire_minutes: int = Field(60, alias="JWT_EXPIRE_MINUTES")
 
+    rate_limit_enabled: bool = Field(True, alias="RATE_LIMIT_ENABLED")
+    rate_limit_jobs_per_minute: int = Field(10, alias="RATE_LIMIT_JOBS_PER_MINUTE")
+    rate_limit_auth_per_minute: int = Field(20, alias="RATE_LIMIT_AUTH_PER_MINUTE")
+
 
 settings = Settings()
