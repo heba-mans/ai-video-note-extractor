@@ -22,6 +22,8 @@ from app.schemas.transcript import TranscriptPageOut
 from app.schemas.transcript_search import TranscriptSearchHit, TranscriptSearchResponse
 from app.services.job_service import create_or_get_job_for_youtube
 from app.workers.celery_app import celery_app
+from app.services.rate_limiter import rate_limit_or_429
+from app.core.config import settings
 
 router = APIRouter(tags=["Jobs"])
 
@@ -38,6 +40,12 @@ def create_job(
     Idempotent behavior:
     same user + same video + same params => returns existing job.
     """
+    rate_limit_or_429(
+        scope="jobs:create",
+        identity=str(user.id),
+        limit=settings.rate_limit_jobs_per_minute,
+        window_seconds=60,
+    )
     try:
         job = create_or_get_job_for_youtube(
             db,
