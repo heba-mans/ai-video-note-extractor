@@ -24,6 +24,8 @@ from app.services.job_service import create_or_get_job_for_youtube
 from app.workers.celery_app import celery_app
 from app.services.rate_limiter import rate_limit_or_429
 from app.core.config import settings
+from app.schemas.ask_video import AskVideoRequest, AskVideoResponse, AskVideoCitation
+from app.services.ask_video_service import ask_video
 
 router = APIRouter(tags=["Jobs"])
 
@@ -211,3 +213,30 @@ def export_job_markdown(
     filename = f"job-{job_id}.md"
     headers = {"Content-Disposition": f'attachment; filename=\"{filename}\"'}
     return PlainTextResponse(markdown, media_type="text/markdown", headers=headers)
+
+@router.post("/jobs/{job_id}/ask", response_model=AskVideoResponse)
+def ask_the_video(
+    job_id: str,
+    payload: AskVideoRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    # validate uuid
+    try:
+        job_uuid = UUID(job_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid job_id")
+
+    # confirm job exists and belongs to user
+    job = db.query(Job).filter(Job.id == job_uuid).one_or_none()
+    if job is None or job.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    answer, citations = ask_video(db, job_id=job_uuid, question=payload.question, k=payload.top_k)
+
+    return AskVideoResponse(
+        job_id=job_id,
+        question=payload.question,
+        answer=answer,
+        citations=[AskVideoCitation(**c) for c in citations],
+    )
