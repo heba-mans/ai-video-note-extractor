@@ -1,0 +1,25 @@
+from __future__ import annotations
+
+from typing import List, Optional
+from pydantic import BaseModel, Field
+
+
+class AskVideoRequest(BaseModel):
+    question: str = Field(..., min_length=1)
+    top_k: int = Field(5, ge=1, le=10)
+
+
+class AskVideoCitation(BaseModel):
+    chunk_id: int
+    idx: int
+    start_seconds: float
+    end_seconds: float
+    distance: float
+    preview: str
+
+
+class AskVideoResponse(BaseModel):
+    job_id: str
+    question: str
+    answer: str
+    citations: List[AskVideoCitation]

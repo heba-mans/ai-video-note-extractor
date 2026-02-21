@@ -202,3 +202,38 @@ class LLMClient:
         text = (resp.output_text or "").strip()
         import json
         return json.loads(text)
+    
+    def answer_question(self, *, question: str, context_md: str) -> str:
+        """
+        Answer user question using provided context. Returns markdown/plaintext answer.
+        """
+        if self.mock:
+            # deterministic mock answer
+            return (
+                "## (MOCK) Answer\n\n"
+                f"**Question:** {question}\n\n"
+                "Based on the retrieved transcript context, here’s a placeholder answer.\n\n"
+                "If you want real answers, set `LLM_MOCK=0` and provide `OPENAI_API_KEY`.\n"
+            )
+
+        resp = self.client.responses.create(
+            model=self.model,
+            input=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You answer questions using ONLY the provided transcript context. "
+                        "If the answer is not in the context, say you don't have enough info. "
+                        "Be concise."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"QUESTION:\n{question}\n\n"
+                        f"CONTEXT:\n{context_md}\n"
+                    ),
+                },
+            ],
+        )
+        return (resp.output_text or "").strip()
