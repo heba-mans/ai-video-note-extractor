@@ -18,6 +18,7 @@ from app.services.transcript_chunking_service import build_transcript_chunks
 from app.db.repositories.transcript_chunks import delete_chunks_for_job, insert_chunks
 from app.services.job_progress import PROGRESS_STEPS
 from app.services.job_progress_service import set_job_progress
+from app.workers.tasks.embed_transcript_chunks import embed_transcript_chunks
 
 logger = get_logger()
 
@@ -108,6 +109,9 @@ def transcribe_audio(self, job_id: str) -> dict[str, str]:
 
         insert_chunks(db, job.id, chunks)
         db.commit()
+
+        # ✅ RAG-3: embed chunks after they are persisted
+        embed_transcript_chunks.delay(str(job.id))
 
         logger.info(
             "transcribe.done",
