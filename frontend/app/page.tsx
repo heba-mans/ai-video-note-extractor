@@ -1,20 +1,26 @@
-import { ThemeToggle } from "@/components/theme-toggle";
-import { Button } from "@/components/ui/button";
+"use client";
+
+import { useQuery } from "@tanstack/react-query";
+
+function TestQuery() {
+  const { data, isLoading } = useQuery({
+    queryKey: ["test"],
+    queryFn: async () => {
+      return new Promise<string>((resolve) =>
+        setTimeout(() => resolve("React Query is working 🚀"), 800)
+      );
+    },
+  });
+
+  if (isLoading) return <p>Loading...</p>;
+  return <p>{data}</p>;
+}
 
 export default function Home() {
   return (
-    <main className="min-h-screen p-8">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">AI Video Note Extractor</h1>
-        <ThemeToggle />
-      </div>
-
-      <div className="mt-8 space-y-4">
-        <p className="text-muted-foreground">
-          FE-02 complete: Tailwind + shadcn + dark mode.
-        </p>
-        <Button>Continue</Button>
-      </div>
+    <main className="min-h-screen p-8 space-y-4">
+      <h1 className="text-xl font-semibold">AI Video Note Extractor</h1>
+      <TestQuery />
     </main>
   );
 }
