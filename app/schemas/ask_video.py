@@ -14,6 +14,13 @@ class AskVideoCitation(BaseModel):
     idx: int
     start_seconds: float
     end_seconds: float
+
+    # RAG-7 fields
+    start_ts: str
+    end_ts: str
+    range_ts: str
+    label: str
+
     distance: float
     preview: str
 
