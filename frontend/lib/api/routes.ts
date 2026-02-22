@@ -2,6 +2,7 @@ export const routes = {
   auth: {
     register: () => "/auth/register",
     login: () => "/auth/login",
+    me: () => "/auth/me",
   },
   jobs: {
     list: () => "/jobs",
