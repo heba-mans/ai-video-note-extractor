@@ -26,6 +26,8 @@ from app.services.rate_limiter import rate_limit_or_429
 from app.core.config import settings
 from app.schemas.ask_video import AskVideoRequest, AskVideoResponse, AskVideoCitation
 from app.services.ask_video_service import ask_video
+from app.db.repositories.chat import get_chat_session, list_messages
+from fastapi.responses import JSONResponse
 
 router = APIRouter(tags=["Jobs"])
 
@@ -221,22 +223,77 @@ def ask_the_video(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    # validate uuid
     try:
         job_uuid = UUID(job_id)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid job_id")
 
-    # confirm job exists and belongs to user
     job = db.query(Job).filter(Job.id == job_uuid).one_or_none()
     if job is None or job.user_id != user.id:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    answer, citations = ask_video(db, job_id=job_uuid, question=payload.question, k=payload.top_k)
+    session_uuid = None
+    if payload.session_id:
+        try:
+            session_uuid = UUID(payload.session_id)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid session_id")
 
-    return AskVideoResponse(
+    try:
+        session_id, answer, citations = ask_video(
+            db,
+            job_id=job_uuid,
+            user_id=user.id,
+            question=payload.question,
+            k=payload.top_k,
+            session_id=session_uuid,
+        )
+        db.commit()
+    except ValueError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        db.rollback()
+        raise
+
+    result = AskVideoResponse(
         job_id=job_id,
+        session_id=str(session_id),
         question=payload.question,
         answer=answer,
         citations=[AskVideoCitation(**c) for c in citations],
     )
+
+    # ✅ Force JSON encoding (escapes any control chars safely)
+    return JSONResponse(content=result.model_dump())
+
+@router.get("/jobs/{job_id}/chat/{session_id}")
+def get_chat_history(
+    job_id: UUID,
+    session_id: UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    job = db.query(Job).filter(Job.id == job_id).one_or_none()
+    if job is None or job.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    session = get_chat_session(db, session_id=session_id)
+    if session is None or session.user_id != user.id or session.job_id != job_id:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+
+    msgs = list_messages(db, session_id=session_id, limit=200)
+    return {
+        "job_id": str(job_id),
+        "session_id": str(session_id),
+        "messages": [
+            {
+                "id": m.id,
+                "role": m.role,
+                "content": m.content,
+                "citations": m.citations_json,
+                "created_at": m.created_at.isoformat(),
+            }
+            for m in msgs
+        ],
+    }
