@@ -1,5 +1,6 @@
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
+import { ReactQueryProvider } from "@/lib/react-query/provider";
 
 export default function RootLayout({
   children,
@@ -9,7 +10,9 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body>
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          <ReactQueryProvider>{children}</ReactQueryProvider>
+        </ThemeProvider>
       </body>
     </html>
   );
