@@ -12,3 +12,5 @@ from app.db.models.chapter import Chapter
 from app.db.models.key_takeaway import KeyTakeaway
 from app.db.models.action_item import ActionItem
 from app.db.models.final_result import FinalResult
+from app.db.models.chat_session import ChatSession
+from app.db.models.chat_message import ChatMessage
