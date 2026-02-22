@@ -7,6 +7,7 @@ from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.logging import configure_logging, get_logger
 from app.core.middleware import RequestContextMiddleware
+from fastapi.middleware.cors import CORSMiddleware
 
 configure_logging(log_level=getattr(settings, "log_level", "INFO"))
 logger = get_logger()
@@ -77,3 +78,15 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 async def root_health_check():
     logger.info("health.check")
     return {"status": "ok"}
+
+app.add_middleware(RequestContextMiddleware)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(api_router, prefix="/api/v1")

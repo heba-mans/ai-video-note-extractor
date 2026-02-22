@@ -25,5 +25,12 @@ class Settings(BaseSettings):
     rate_limit_jobs_per_minute: int = Field(10, alias="RATE_LIMIT_JOBS_PER_MINUTE")
     rate_limit_auth_per_minute: int = Field(20, alias="RATE_LIMIT_AUTH_PER_MINUTE")
 
+    # Auth cookie settings
+    AUTH_COOKIE_NAME: str = "access_token"
+    AUTH_COOKIE_SECURE: bool = False  # True in prod (https)
+    AUTH_COOKIE_SAMESITE: str = "lax"  # "lax" is good SaaS default
+    AUTH_COOKIE_PATH: str = "/"
+    AUTH_COOKIE_MAX_AGE_SECONDS: int = 60 * 60  # 1 hour
+
 
 settings = Settings()

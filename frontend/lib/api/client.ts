@@ -11,8 +11,12 @@ type ApiFetchOptions = Omit<RequestInit, "method" | "body"> & {
 
 function buildUrl(path: string) {
   assertEnv();
-  // If caller accidentally passes full URL, allow it.
-  if (path.startsWith("http://") || path.startsWith("https://")) return path;
+
+  // Allow full URL override
+  if (path.startsWith("http://") || path.startsWith("https://")) {
+    return path;
+  }
+
   const base = env.API_BASE_URL.replace(/\/$/, "");
   const p = path.startsWith("/") ? path : `/${path}`;
   return `${base}${p}`;
@@ -21,6 +25,7 @@ function buildUrl(path: string) {
 async function safeParseJson(res: Response) {
   const text = await res.text();
   if (!text) return null;
+
   try {
     return JSON.parse(text);
   } catch {
@@ -38,48 +43,52 @@ export async function apiFetch<T>(
 
   const res = await fetch(url, {
     method,
-    credentials: "include", // ✅ cookie auth
+    credentials: "include", // ✅ httpOnly cookie auth
     headers: {
-      "Content-Type": "application/json",
+      ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+      "X-Client": "frontend", // helpful for backend logs
       ...(headers ?? {}),
     },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: body !== undefined ? JSON.stringify(body) : undefined,
     ...rest,
   });
 
+  // ✅ Success
   if (res.ok) {
-    // handle empty responses (204)
     if (res.status === 204) return null as T;
     const data = await safeParseJson(res);
     return data as T;
   }
 
-  // Non-2xx
+  // ❌ Error handling
   const payload = await safeParseJson(res);
 
-  // Try to map backend standardized error shape if present
   const message =
-    payload &&
-    typeof payload === "object" &&
-    "message" in payload &&
-    typeof (payload as any).message === "string"
-      ? (payload as any).message
+    payload && typeof payload === "object"
+      ? (payload as any)?.error?.message ??
+        (typeof (payload as any)?.detail === "string"
+          ? (payload as any).detail
+          : undefined) ??
+        `Request failed with status ${res.status}`
       : typeof payload === "string"
       ? payload
       : `Request failed with status ${res.status}`;
 
   const code =
-    payload &&
-    typeof payload === "object" &&
-    "code" in payload &&
-    typeof (payload as any).code === "string"
-      ? (payload as any).code
+    payload && typeof payload === "object"
+      ? (payload as any)?.error?.code ??
+        (typeof (payload as any)?.detail === "string" ? "error" : undefined)
       : undefined;
 
   const details =
-    payload && typeof payload === "object" && "details" in payload
-      ? (payload as any).details
+    payload && typeof payload === "object"
+      ? (payload as any)?.error?.details ?? (payload as any)?.error ?? payload
       : payload;
+
+  // 🔐 Global 401 redirect (browser only)
+  if (res.status === 401 && typeof window !== "undefined") {
+    window.location.href = "/login";
+  }
 
   throw new ApiError({
     status: res.status,
@@ -92,21 +101,25 @@ export async function apiFetch<T>(
 export const api = {
   get: <T>(path: string, options?: Omit<ApiFetchOptions, "method" | "body">) =>
     apiFetch<T>(path, { ...options, method: "GET" }),
+
   post: <T>(
     path: string,
     body?: unknown,
     options?: Omit<ApiFetchOptions, "method" | "body">
   ) => apiFetch<T>(path, { ...options, method: "POST", body }),
+
   put: <T>(
     path: string,
     body?: unknown,
     options?: Omit<ApiFetchOptions, "method" | "body">
   ) => apiFetch<T>(path, { ...options, method: "PUT", body }),
+
   patch: <T>(
     path: string,
     body?: unknown,
     options?: Omit<ApiFetchOptions, "method" | "body">
   ) => apiFetch<T>(path, { ...options, method: "PATCH", body }),
+
   del: <T>(path: string, options?: Omit<ApiFetchOptions, "method" | "body">) =>
     apiFetch<T>(path, { ...options, method: "DELETE" }),
 } as const;
