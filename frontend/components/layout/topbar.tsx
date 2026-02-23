@@ -1,8 +1,8 @@
 "use client";
 
-import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { PanelLeft } from "lucide-react";
+import { UserMenu } from "@/components/layout/user-menu";
 
 type TopbarProps = {
   onOpenSidebar?: () => void;
@@ -27,7 +27,7 @@ export function Topbar({ onOpenSidebar, title = "Jobs" }: TopbarProps) {
       </div>
 
       <div className="flex items-center gap-2">
-        <ThemeToggle />
+        <UserMenu />
       </div>
     </header>
   );

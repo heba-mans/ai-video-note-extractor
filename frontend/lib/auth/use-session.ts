@@ -8,7 +8,7 @@ import { ApiError } from "@/lib/api/error";
 export type SessionUser = { id: string; email: string };
 
 export function useSession() {
-  const q = useQuery<SessionUser | null>({
+  return useQuery<SessionUser | null>({
     queryKey: ["session"],
     queryFn: async () => {
       try {
@@ -18,13 +18,9 @@ export function useSession() {
         throw e;
       }
     },
+    staleTime: 1000 * 60 * 5, // 5 minutes
     retry: false,
-    staleTime: 1000 * 60 * 5,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: true,
   });
-
-  return {
-    user: q.data ?? null,
-    isLoading: q.isLoading,
-    isAuthenticated: !!q.data,
-  };
 }
