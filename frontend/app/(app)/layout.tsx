@@ -7,10 +7,12 @@ import { useEffect } from "react";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const { isLoading, user } = useSession();
+  const { data: user, isLoading } = useSession();
 
   useEffect(() => {
-    if (!isLoading && !user) router.replace("/login");
+    if (!isLoading && !user) {
+      router.replace("/login");
+    }
   }, [isLoading, user, router]);
 
   if (isLoading) {
@@ -21,6 +23,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!user) return null;
+  // Important: never return null (blank screen).
+  // Show a tiny fallback while redirecting.
+  if (!user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        Redirecting…
+      </div>
+    );
+  }
+
   return <AppShell>{children}</AppShell>;
 }

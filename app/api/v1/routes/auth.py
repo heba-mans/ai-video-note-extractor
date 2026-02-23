@@ -100,3 +100,9 @@ def me(current_user: User = Depends(get_current_user)):
         "id": str(current_user.id),
         "email": current_user.email,
     }
+
+@router.post("/logout")
+def logout(response: Response):
+    cookie_name = getattr(settings, "AUTH_COOKIE_NAME", "access_token")
+    response.delete_cookie(key=cookie_name, path="/")
+    return {"ok": True}
