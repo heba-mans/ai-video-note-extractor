@@ -19,3 +19,16 @@ export async function fetchJobs(): Promise<Job[]> {
   const data = await api.get<JobsListResponse>(routes.jobs.list());
   return normalizeJobsResponse(data);
 }
+
+export type CreateJobRequest = {
+  youtube_url: string;
+};
+
+export type CreateJobResponse = {
+  id: string;
+  status: string;
+};
+
+export async function createJob(payload: CreateJobRequest) {
+  return api.post<CreateJobResponse>(routes.jobs.create(), payload);
+}
