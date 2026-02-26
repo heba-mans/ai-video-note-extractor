@@ -1,37 +1,30 @@
-"use client";
-
 import { AppShell } from "@/components/layout/app-shell";
-import { useSession } from "@/lib/auth/use-session";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 
-export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
-  const { data: user, isLoading } = useSession();
+async function requireSession() {
+  const backend = process.env.BACKEND_ORIGIN ?? "http://localhost:8000";
 
-  useEffect(() => {
-    if (!isLoading && !user) {
-      router.replace("/login");
-    }
-  }, [isLoading, user, router]);
+  const cookieStore = await cookies();
+  const cookieHeader = cookieStore
+    .getAll()
+    .map((c) => `${c.name}=${c.value}`)
+    .join("; ");
 
-  if (isLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        Loading…
-      </div>
-    );
-  }
+  const res = await fetch(`${backend}/api/v1/auth/me`, {
+    headers: cookieHeader ? { cookie: cookieHeader } : undefined,
+    cache: "no-store",
+  });
 
-  // Important: never return null (blank screen).
-  // Show a tiny fallback while redirecting.
-  if (!user) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        Redirecting…
-      </div>
-    );
-  }
+  if (!res.ok) redirect("/login");
+  return res.json();
+}
 
+export default async function AppLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  await requireSession();
   return <AppShell>{children}</AppShell>;
 }

@@ -1,25 +1,26 @@
-import { env, assertEnv } from "@/lib/env";
 import { ApiError } from "@/lib/api/error";
 
-type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
-type ApiFetchOptions = Omit<RequestInit, "method" | "body"> & {
+export type ApiFetchOptions = Omit<RequestInit, "method" | "body"> & {
   method?: HttpMethod;
   body?: unknown;
   signal?: AbortSignal;
 };
 
+/**
+ * BFF-first URL builder.
+ * - In the browser: use same-origin paths like "/api/auth/me"
+ * - Absolute URLs are allowed for debugging/tools
+ * - If you *must* support calling backend directly in server contexts later,
+ *   do it in route handlers, not from here.
+ */
 function buildUrl(path: string) {
-  assertEnv();
-
   // Allow full URL override
-  if (path.startsWith("http://") || path.startsWith("https://")) {
-    return path;
-  }
+  if (path.startsWith("http://") || path.startsWith("https://")) return path;
 
-  const base = env.API_BASE_URL.replace(/\/$/, "");
-  const p = path.startsWith("/") ? path : `/${path}`;
-  return `${base}${p}`;
+  // Ensure leading slash
+  return path.startsWith("/") ? path : `/${path}`;
 }
 
 async function safeParseJson(res: Response) {
@@ -46,7 +47,7 @@ export async function apiFetch<T>(
     credentials: "include", // ✅ httpOnly cookie auth
     headers: {
       ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
-      "X-Client": "frontend", // helpful for backend logs
+      "X-Client": "frontend",
       ...(headers ?? {}),
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -85,11 +86,8 @@ export async function apiFetch<T>(
       ? (payload as any)?.error?.details ?? (payload as any)?.error ?? payload
       : payload;
 
-  // 🔐 Global 401 redirect (browser only)
-  if (res.status === 401 && typeof window !== "undefined") {
-    window.location.href = "/login";
-  }
-
+  // IMPORTANT: don't force a hard redirect here.
+  // Let route protection (layout/server guard) handle auth UX consistently.
   throw new ApiError({
     status: res.status,
     message,
