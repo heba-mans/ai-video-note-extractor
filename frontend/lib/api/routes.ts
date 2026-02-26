@@ -1,25 +1,22 @@
-const API_V1 = "/api/v1";
+const API = "/api";
 
 export const routes = {
   auth: {
-    register: () => `${API_V1}/auth/register`,
-    login: () => `${API_V1}/auth/login`,
-    me: () => `${API_V1}/auth/me`,
-    logout: () => `${API_V1}/auth/logout`,
+    register: () => `${API}/auth/register`,
+    login: () => `${API}/auth/login`,
+    me: () => `${API}/auth/me`,
+    logout: () => `${API}/auth/logout`,
   },
   jobs: {
-    list: () => `${API_V1}/jobs`,
-    create: () => `${API_V1}/jobs`,
-    byId: (jobId: string) => `${API_V1}/jobs/${jobId}`,
-    progress: (jobId: string) => `${API_V1}/jobs/${jobId}/progress`,
-    results: (jobId: string) => `${API_V1}/jobs/${jobId}/results`,
-    transcript: (jobId: string) => `${API_V1}/jobs/${jobId}/transcript`,
+    list: () => `${API}/jobs`,
+    create: () => `${API}/jobs`,
+    byId: (jobId: string) => `${API}/jobs/${jobId}`,
+    progress: (jobId: string) => `${API}/jobs/${jobId}/progress`,
+    results: (jobId: string) => `${API}/jobs/${jobId}/results`,
+    transcript: (jobId: string) => `${API}/jobs/${jobId}/transcript`,
     transcriptSearch: (jobId: string) =>
-      `${API_V1}/jobs/${jobId}/transcript/search`,
-    exportMarkdown: (jobId: string) =>
-      `${API_V1}/jobs/${jobId}/export/markdown`,
-    ask: (jobId: string) => `${API_V1}/jobs/${jobId}/ask`,
-    chatHistory: (jobId: string, sessionId: string) =>
-      `${API_V1}/jobs/${jobId}/chat/${sessionId}`,
+      `${API}/jobs/${jobId}/transcript/search`,
+    exportMarkdown: (jobId: string) => `${API}/jobs/${jobId}/export/markdown`,
+    ask: (jobId: string) => `${API}/jobs/${jobId}/ask`,
   },
 } as const;

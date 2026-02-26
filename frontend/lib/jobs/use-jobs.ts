@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 import { routes } from "@/lib/api/routes";
+import { qk } from "@/lib/query/keys";
 
 export type Job = {
   id: string;
@@ -23,20 +24,24 @@ type JobsApiResponse =
 
 function normalizeJobs(data: JobsApiResponse): Job[] {
   if (Array.isArray(data)) return data;
-  if (data && typeof data === "object" && Array.isArray((data as any).items)) {
-    return (data as any).items as Job[];
+
+  if (data && typeof data === "object") {
+    const items = (data as any).items;
+    if (Array.isArray(items)) return items as Job[];
   }
+
   return [];
 }
 
 export function useJobs() {
   return useQuery<Job[]>({
-    queryKey: ["jobs"],
+    queryKey: qk.jobs.list(),
     queryFn: async () => {
       const res = await api.get<JobsApiResponse>(routes.jobs.list());
       return normalizeJobs(res);
     },
     staleTime: 1000 * 15,
+    retry: 1,
     refetchOnWindowFocus: false,
   });
 }

@@ -4,17 +4,21 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 import { routes } from "@/lib/api/routes";
 import { ApiError } from "@/lib/api/error";
+import { qk } from "@/lib/query/keys";
 
 export type SessionUser = { id: string; email: string };
 
 export function useSession() {
   return useQuery<SessionUser | null>({
-    queryKey: ["session"],
+    queryKey: qk.auth.me(),
     queryFn: async () => {
       try {
         return await api.get<SessionUser>(routes.auth.me());
       } catch (e) {
-        if (e instanceof ApiError && e.status === 401) return null;
+        // Treat "not authenticated" as a null session
+        if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+          return null;
+        }
         throw e;
       }
     },

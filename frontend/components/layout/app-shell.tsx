@@ -3,7 +3,7 @@
 import * as React from "react";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = React.useState(false);
@@ -16,13 +16,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Sidebar />
         </div>
 
-        {/* Mobile sidebar (sheet) */}
+        {/* Mobile sidebar */}
         <Sheet open={open} onOpenChange={setOpen}>
-          <SheetTrigger asChild>
-            {/* Trigger lives in Topbar; we control via state */}
-            <div className="hidden" />
-          </SheetTrigger>
-
           <SheetContent side="left" className="w-72 p-0">
             <Sidebar />
           </SheetContent>
