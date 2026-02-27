@@ -1,37 +1,87 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useJob } from "@/lib/jobs/use-job";
-import { Badge } from "@/components/ui/badge";
+import { useJobProgress, jobProgressUtils } from "@/lib/jobs/use-job-progress";
+import { JobProgressStatus } from "@/components/jobs/job-progress";
+import { Button } from "@/components/ui/button";
 
 export default function JobOverviewPage() {
+  const router = useRouter();
   const { jobId } = useParams<{ jobId: string }>();
-  const { data, isLoading, error } = useJob(jobId);
 
-  if (isLoading) return <div>Loading job...</div>;
-  if (error) return <div className="text-destructive">Failed to load job.</div>;
-  if (!data) return <div>Not found.</div>;
+  const job = useJob(jobId);
+  const progress = useJobProgress(jobId);
+
+  if (job.isLoading) return <div>Loading job...</div>;
+  if (job.error)
+    return <div className="text-destructive">Failed to load job.</div>;
+  if (!job.data) return <div>Not found.</div>;
+
+  const status = progress.data?.status ?? job.data.status;
+  const percent = progress.data?.percent;
+  const stage = progress.data?.stage;
+  const message = progress.data?.message;
+
+  const terminal = jobProgressUtils.isTerminal(status);
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <div className="flex items-start justify-between gap-4">
-        <div>
+        <div className="min-w-0">
           <h1 className="text-xl font-semibold">
-            {data.title ?? "Job"}{" "}
-            <span className="text-muted-foreground">#{data.id}</span>
+            {job.data.title ?? "Job"}{" "}
+            <span className="text-muted-foreground">#{job.data.id}</span>
           </h1>
-          {data.youtube_url ? (
-            <div className="mt-1 text-sm text-muted-foreground">
-              {data.youtube_url}
+          {job.data.youtube_url ? (
+            <div className="mt-1 truncate text-sm text-muted-foreground">
+              {job.data.youtube_url}
             </div>
           ) : null}
         </div>
-        <Badge variant="outline">{data.status}</Badge>
+
+        <div className="w-full max-w-sm">
+          <JobProgressStatus
+            status={status}
+            percent={percent}
+            stage={stage}
+            message={message}
+          />
+        </div>
       </div>
 
-      <div className="rounded-lg border p-4 text-sm text-muted-foreground">
-        FE-26 will add progress polling + live status.
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant="secondary"
+          onClick={() => router.push(`/jobs/${jobId}/results`)}
+        >
+          View Results
+        </Button>
+        <Button
+          variant="secondary"
+          onClick={() => router.push(`/jobs/${jobId}/transcript`)}
+        >
+          View Transcript
+        </Button>
+        <Button
+          variant="secondary"
+          onClick={() => router.push(`/jobs/${jobId}/ask`)}
+        >
+          Ask the Video
+        </Button>
+
+        {terminal ? (
+          <Button onClick={() => router.push(`/jobs/${jobId}/results`)}>
+            Open results
+          </Button>
+        ) : null}
       </div>
+
+      {!terminal ? (
+        <div className="rounded-lg border p-4 text-sm text-muted-foreground">
+          This page updates automatically while the job is running.
+        </div>
+      ) : null}
     </div>
   );
 }
