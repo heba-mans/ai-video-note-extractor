@@ -1,144 +1,87 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import * as React from "react";
 import { useRouter } from "next/navigation";
-
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { useCreateJob } from "@/lib/jobs/use-create-job";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
-import { ApiError } from "@/lib/api/error";
-import { createJob } from "@/features/jobs/jobs.api";
-
-function isValidYouTubeUrl(url: string) {
-  try {
-    const u = new URL(url);
-    const host = u.hostname.replace("www.", "");
-    const isYoutube =
-      host === "youtube.com" || host === "youtu.be" || host === "m.youtube.com";
-
-    if (!isYoutube) return false;
-
-    // Accept youtu.be/<id> OR youtube.com/watch?v=<id>
-    if (host === "youtu.be") {
-      return u.pathname.length > 1;
-    }
-
-    if (u.pathname === "/watch") {
-      return !!u.searchParams.get("v");
-    }
-
-    // also accept /shorts/<id>
-    if (u.pathname.startsWith("/shorts/")) return true;
-
-    return false;
-  } catch {
-    return false;
-  }
+function isProbablyYouTubeUrl(url: string) {
+  const u = url.trim();
+  // simple and safe: we’ll accept youtu.be and youtube.com
+  return /^https?:\/\/(www\.)?(youtube\.com|youtu\.be)\//i.test(u);
 }
 
 export default function NewJobPage() {
   const router = useRouter();
-  const qc = useQueryClient();
+  const [url, setUrl] = React.useState("");
+  const [touched, setTouched] = React.useState(false);
 
-  const [youtubeUrl, setYoutubeUrl] = useState("");
-  const [formError, setFormError] = useState<string | null>(null);
+  const createJob = useCreateJob();
 
-  const isValid = useMemo(
-    () => isValidYouTubeUrl(youtubeUrl.trim()),
-    [youtubeUrl]
-  );
+  const urlTrim = url.trim();
+  const isValid = urlTrim.length > 0 && isProbablyYouTubeUrl(urlTrim);
 
-  const mutation = useMutation({
-    mutationFn: async () => {
-      const url = youtubeUrl.trim();
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setTouched(true);
+    if (!isValid || createJob.isPending) return;
 
-      if (!isValidYouTubeUrl(url)) {
-        throw new Error("Please enter a valid YouTube URL.");
-      }
-
-      return createJob({ youtube_url: url });
-    },
-    onSuccess: async (job) => {
-      // refresh jobs list cache (nice UX)
-      await qc.invalidateQueries({ queryKey: ["jobs"] });
-
-      // redirect to job detail
+    try {
+      const job = await createJob.mutateAsync({ youtube_url: urlTrim });
       router.push(`/jobs/${job.id}`);
-    },
-    onError: (err) => {
-      if (err instanceof ApiError) {
-        setFormError(err.message);
-        return;
-      }
-      if (err instanceof Error) {
-        setFormError(err.message);
-        return;
-      }
-      setFormError("Something went wrong.");
-    },
-  });
+    } catch {
+      // error rendered below from createJob.error
+    }
+  }
+
+  const errorMsg =
+    touched && urlTrim.length > 0 && !isValid
+      ? "Please enter a valid YouTube URL."
+      : createJob.error instanceof Error
+      ? createJob.error.message
+      : null;
 
   return (
-    <div className="max-w-2xl space-y-6">
+    <div className="mx-auto max-w-2xl space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">New Job</h1>
-        <p className="text-sm text-muted-foreground">
-          Paste a YouTube link and we’ll transcribe it, summarize it, and let
-          you ask questions with citations.
+        <h1 className="text-xl font-semibold">New job</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Paste a YouTube link to generate transcript, notes, and insights.
         </p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Video URL</CardTitle>
-          <CardDescription>
-            We support youtube.com, youtu.be, and Shorts.
-          </CardDescription>
-        </CardHeader>
+      <form onSubmit={onSubmit} className="space-y-3">
+        <Input
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          onBlur={() => setTouched(true)}
+          placeholder="https://www.youtube.com/watch?v=..."
+          autoComplete="off"
+        />
 
-        <CardContent className="space-y-4">
-          {formError && (
-            <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-              {formError}
-            </div>
-          )}
+        {errorMsg ? (
+          <div className="text-sm text-destructive">{errorMsg}</div>
+        ) : null}
 
-          <div className="space-y-2">
-            <Label htmlFor="youtube_url">YouTube URL</Label>
-            <Input
-              id="youtube_url"
-              placeholder="https://www.youtube.com/watch?v=..."
-              value={youtubeUrl}
-              onChange={(e) => {
-                setFormError(null);
-                setYoutubeUrl(e.target.value);
-              }}
-            />
-            {!isValid && youtubeUrl.trim().length > 0 ? (
-              <p className="text-xs text-muted-foreground">
-                Enter a valid YouTube URL (watch?v=…, youtu.be/…, or /shorts/…).
-              </p>
-            ) : null}
-          </div>
-
-          <Button
-            className="w-full"
-            disabled={!isValid || mutation.isPending}
-            onClick={() => mutation.mutate()}
-          >
-            {mutation.isPending ? "Creating job..." : "Create Job"}
+        <div className="flex items-center gap-2">
+          <Button type="submit" disabled={!isValid || createJob.isPending}>
+            {createJob.isPending ? "Creating..." : "Create job"}
           </Button>
-        </CardContent>
-      </Card>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => router.push("/jobs")}
+          >
+            Cancel
+          </Button>
+        </div>
+      </form>
+
+      <div className="rounded-lg border p-4 text-sm text-muted-foreground">
+        Tip: Jobs can take a few minutes depending on video length. You’ll see
+        live progress in the next phase (FE-26).
+      </div>
     </div>
   );
 }
