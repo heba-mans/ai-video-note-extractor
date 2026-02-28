@@ -13,9 +13,8 @@ export const routes = {
     byId: (jobId: string) => `${API}/jobs/${jobId}`,
     progress: (jobId: string) => `${API}/jobs/${jobId}/progress`,
     results: (jobId: string) => `${API}/jobs/${jobId}/results`,
-    transcript: (jobId: string) => `${API}/jobs/${jobId}/transcript`,
-    transcriptSearch: (jobId: string) =>
-      `${API}/jobs/${jobId}/transcript/search`,
+    transcript: (jobId: string) => `/api/jobs/${jobId}/transcript`,
+    transcriptSearch: (jobId: string) => `/api/jobs/${jobId}/transcript/search`,
     exportMarkdown: (jobId: string) => `${API}/jobs/${jobId}/export/markdown`,
     ask: (jobId: string) => `${API}/jobs/${jobId}/ask`,
   },

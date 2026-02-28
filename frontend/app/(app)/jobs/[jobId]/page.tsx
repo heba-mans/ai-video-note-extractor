@@ -44,8 +44,8 @@ export default function JobOverviewPage() {
           <JobProgressStatus
             status={status}
             percent={percent}
-            stage={stage}
-            message={message}
+            stage={stage ?? undefined}
+            message={message ?? undefined}
           />
         </div>
       </div>
