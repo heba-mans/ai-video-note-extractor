@@ -25,7 +25,7 @@ function initialsFromEmail(email?: string | null) {
   return part.slice(0, 2).toUpperCase();
 }
 
-export function UserMenu() {
+export default function UserMenu() {
   const router = useRouter();
   const qc = useQueryClient();
   const { data: user } = useSession();
