@@ -2,7 +2,11 @@
 
 import { Button } from "@/components/ui/button";
 import { PanelLeft } from "lucide-react";
-import { UserMenu } from "@/components/layout/user-menu";
+import dynamic from "next/dynamic";
+
+const UserMenu = dynamic(() => import("@/components/layout/user-menu"), {
+  ssr: false,
+});
 
 type TopbarProps = {
   onOpenSidebar?: () => void;

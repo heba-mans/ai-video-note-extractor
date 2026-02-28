@@ -16,6 +16,8 @@ export const routes = {
     transcript: (jobId: string) => `/api/jobs/${jobId}/transcript`,
     transcriptSearch: (jobId: string) => `/api/jobs/${jobId}/transcript/search`,
     exportMarkdown: (jobId: string) => `${API}/jobs/${jobId}/export/markdown`,
-    ask: (jobId: string) => `${API}/jobs/${jobId}/ask`,
+    ask: (jobId: string) => `/api/jobs/${jobId}/ask`,
+    chatHistory: (jobId: string, sessionId: string) =>
+      `/api/jobs/${jobId}/chat/${sessionId}`,
   },
 } as const;
