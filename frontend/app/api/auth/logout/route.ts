@@ -3,8 +3,8 @@ import { backendFetch } from "../../_lib/backend";
 
 export async function POST() {
   const res = await backendFetch("/api/v1/auth/logout", { method: "POST" });
-  const body = await res.text();
 
+  const body = await res.text();
   const nextRes = new NextResponse(body, {
     status: res.status,
     headers: {
@@ -12,8 +12,15 @@ export async function POST() {
     },
   });
 
-  const setCookie = res.headers.get("set-cookie");
-  if (setCookie) nextRes.headers.set("set-cookie", setCookie);
+  // ✅ Forward ALL Set-Cookie headers (backend should clear cookie)
+  const getSetCookie = (res.headers as any).getSetCookie?.bind(res.headers);
+  const cookies = getSetCookie ? getSetCookie() : [];
+  if (cookies.length) {
+    for (const c of cookies) nextRes.headers.append("set-cookie", c);
+  } else {
+    const single = res.headers.get("set-cookie");
+    if (single) nextRes.headers.append("set-cookie", single);
+  }
 
   return nextRes;
 }

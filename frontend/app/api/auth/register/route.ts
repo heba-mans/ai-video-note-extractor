@@ -18,8 +18,15 @@ export async function POST(req: Request) {
     },
   });
 
-  const setCookie = res.headers.get("set-cookie");
-  if (setCookie) nextRes.headers.set("set-cookie", setCookie);
+  // ✅ Forward ALL Set-Cookie headers (robust)
+  const getSetCookie = (res.headers as any).getSetCookie?.bind(res.headers);
+  const cookies = getSetCookie ? getSetCookie() : [];
+  if (cookies.length) {
+    for (const c of cookies) nextRes.headers.append("set-cookie", c);
+  } else {
+    const single = res.headers.get("set-cookie");
+    if (single) nextRes.headers.append("set-cookie", single);
+  }
 
   return nextRes;
 }

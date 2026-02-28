@@ -19,6 +19,7 @@ from app.db.repositories.transcript_chunks import delete_chunks_for_job, insert_
 from app.services.job_progress import PROGRESS_STEPS
 from app.services.job_progress_service import set_job_progress
 from app.workers.tasks.embed_transcript_chunks import embed_transcript_chunks
+import os
 
 logger = get_logger()
 
@@ -43,7 +44,7 @@ def get_model() -> WhisperModel:
             model_name,
             device="cpu",
             compute_type="int8",
-            download_root="/app/models",
+            download_root=os.getenv("WHISPER_MODEL_DIR", str(Path("./models").resolve())),
         )
         logger.info("whisper.model.loaded", model=model_name)
     return _MODEL

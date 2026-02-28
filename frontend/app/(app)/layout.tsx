@@ -1,4 +1,5 @@
 import { AppShell } from "@/components/layout/app-shell";
+import { AppProviders } from "@/lib/query/providers";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -11,13 +12,15 @@ async function requireSession() {
     .map((c) => `${c.name}=${c.value}`)
     .join("; ");
 
-  const res = await fetch(`${backend}/api/v1/auth/me`, {
-    headers: cookieHeader ? { cookie: cookieHeader } : undefined,
-    cache: "no-store",
-  });
-
-  if (!res.ok) redirect("/login");
-  return res.json();
+  try {
+    const res = await fetch(`${backend}/api/v1/auth/me`, {
+      headers: cookieHeader ? { cookie: cookieHeader } : undefined,
+      cache: "no-store",
+    });
+    if (!res.ok) redirect("/login");
+  } catch {
+    redirect("/login");
+  }
 }
 
 export default async function AppLayout({
@@ -26,5 +29,10 @@ export default async function AppLayout({
   children: React.ReactNode;
 }) {
   await requireSession();
-  return <AppShell>{children}</AppShell>;
+
+  return (
+    <AppProviders>
+      <AppShell>{children}</AppShell>
+    </AppProviders>
+  );
 }
