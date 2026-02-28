@@ -16,6 +16,13 @@ from app.services.job_progress import PROGRESS_STEPS
 from app.services.job_progress_service import set_job_progress
 from app.workers.tasks.download_audio import download_audio
 from app.workers.tasks.transcribe_audio import transcribe_audio
+from app.workers.tasks.map_summarize import map_summarize_job
+from app.workers.tasks.reduce_summarize import reduce_summarize_job
+from app.workers.tasks.extract_chapters import extract_chapters_job
+from app.workers.tasks.extract_key_takeaways import extract_key_takeaways_job
+from app.workers.tasks.extract_action_items import extract_action_items_job
+from app.workers.tasks.persist_final_results import persist_final_results_job
+from app.workers.tasks.format_markdown import format_markdown_job
 
 logger = get_logger()
 
@@ -72,8 +79,13 @@ def process_job(self, job_id: str) -> dict[str, str]:
         transcribe_audio(str(job.id))
 
         # Summarize (placeholder for now)
-        step = PROGRESS_STEPS["summarize"]
-        set_job_progress(db, job=job, status=step.status, stage=step.stage, progress=step.progress)
+        map_summarize_job(str(job.id))
+        reduce_summarize_job(str(job.id))
+        extract_chapters_job(str(job.id))
+        extract_key_takeaways_job(str(job.id))
+        extract_action_items_job(str(job.id))
+        persist_final_results_job(str(job.id))
+        format_markdown_job(str(job.id))
 
         # Finalize
         step = PROGRESS_STEPS["finalize"]
