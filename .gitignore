@@ -219,3 +219,5 @@ logs/
 
 .env.docker
 .env.docker.*
+
+models/
