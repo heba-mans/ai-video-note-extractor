@@ -13,12 +13,39 @@ function toNumberOrNull(v: string | null) {
   return Number.isNaN(n) ? null : n;
 }
 
+function findNearestSegmentIdxByTs(
+  segments: { idx: number; start_ms: number; end_ms: number }[],
+  tsSeconds: number
+): number | null {
+  const target = tsSeconds * 1000;
+  if (!segments.length) return null;
+
+  // Prefer containment
+  const hit = segments.find((s) => s.start_ms <= target && target <= s.end_ms);
+  if (hit) return hit.idx;
+
+  // Else nearest by start
+  let best = segments[0];
+  let bestDist = Math.abs(best!.start_ms - target);
+
+  for (const s of segments) {
+    const d = Math.abs(s.start_ms - target);
+    if (d < bestDist) {
+      best = s;
+      bestDist = d;
+    }
+  }
+
+  return best!.idx;
+}
+
 export default function TranscriptPage() {
   const router = useRouter();
   const { jobId } = useParams<{ jobId: string }>();
   const sp = useSearchParams();
 
   const segFromUrl = toNumberOrNull(sp.get("seg"));
+  const tsFromUrl = toNumberOrNull(sp.get("ts")); // seconds
   const qFromUrl = sp.get("q") ?? "";
 
   const [activeIdx, setActiveIdx] = React.useState<number | null>(segFromUrl);
@@ -52,6 +79,24 @@ export default function TranscriptPage() {
     const qs = params.toString();
     router.replace(`/jobs/${jobId}/transcript${qs ? `?${qs}` : ""}`);
   }
+
+  // FE-30: ts -> seg mapping once transcript is loaded
+  React.useEffect(() => {
+    if (!segments.length) return;
+
+    // If seg already exists, we’re done.
+    if (segFromUrl != null) return;
+
+    // If we have a timestamp deep-link, map it to nearest segment.
+    if (tsFromUrl == null) return;
+
+    const idx = findNearestSegmentIdxByTs(segments, tsFromUrl);
+    if (idx == null) return;
+
+    setActiveIdx(idx);
+    updateUrl({ seg: idx }); // keep q/ts intact in URLSearchParams
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [segments.length, tsFromUrl, segFromUrl]);
 
   function jumpToIdx(idx: number) {
     setActiveIdx(idx);
