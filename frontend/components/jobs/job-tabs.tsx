@@ -30,27 +30,32 @@ export function JobTabs() {
   const jobId = params.jobId;
 
   return (
-    <div className="flex flex-wrap gap-2 border-b pb-2">
-      {tabs.map((t) => {
-        const href = t.href(jobId);
-        const active =
-          t.key === "overview" ? pathname === href : pathname.startsWith(href);
+    <nav aria-label="Job sections" className="border-b pb-2">
+      <div className="flex flex-wrap gap-2">
+        {tabs.map((t) => {
+          const href = t.href(jobId);
+          const active =
+            t.key === "overview"
+              ? pathname === href
+              : pathname.startsWith(href);
 
-        return (
-          <Link
-            key={t.key}
-            href={href}
-            className={cn(
-              "rounded-md px-3 py-1.5 text-sm transition",
-              active
-                ? "bg-accent text-foreground"
-                : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
-            )}
-          >
-            {t.label}
-          </Link>
-        );
-      })}
-    </div>
+          return (
+            <Link
+              key={t.key}
+              href={href}
+              aria-current={active ? "page" : undefined}
+              className={cn(
+                "rounded-md px-3 py-1.5 text-sm transition",
+                active
+                  ? "bg-accent text-foreground"
+                  : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+              )}
+            >
+              {t.label}
+            </Link>
+          );
+        })}
+      </div>
+    </nav>
   );
 }
