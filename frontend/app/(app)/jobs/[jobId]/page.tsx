@@ -24,6 +24,7 @@ export default function JobOverviewPage() {
   const message = progress.data?.message;
 
   const terminal = jobProgressUtils.isTerminal(status);
+  const isCompleted = String(status).toLowerCase() === "completed";
 
   return (
     <div className="space-y-4">
@@ -50,36 +51,44 @@ export default function JobOverviewPage() {
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button
           variant="secondary"
           onClick={() => router.push(`/jobs/${jobId}/results`)}
+          disabled={!isCompleted}
         >
           View Results
         </Button>
+
         <Button
           variant="secondary"
           onClick={() => router.push(`/jobs/${jobId}/transcript`)}
+          disabled={!isCompleted}
         >
           View Transcript
         </Button>
+
         <Button
           variant="secondary"
           onClick={() => router.push(`/jobs/${jobId}/ask`)}
+          disabled={!isCompleted}
         >
           Ask the Video
         </Button>
 
-        {terminal ? (
+        {isCompleted ? (
           <Button onClick={() => router.push(`/jobs/${jobId}/results`)}>
             Open results
           </Button>
         ) : null}
       </div>
 
-      {!terminal ? (
-        <div className="rounded-lg border p-4 text-sm text-muted-foreground">
-          This page updates automatically while the job is running.
+      {!isCompleted ? (
+        <div className="rounded-lg border p-4 text-sm text-muted-foreground space-y-1">
+          <div>This page updates automatically while the job is running.</div>
+          <div className="text-xs">
+            Results, Transcript, and Ask unlock once processing completes.
+          </div>
         </div>
       ) : null}
     </div>

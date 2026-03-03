@@ -2,11 +2,18 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { routes } from "@/lib/api/routes";
+import { toast } from "sonner";
+
 import { api } from "@/lib/api/client";
+import { routes } from "@/lib/api/routes";
+import { ApiError } from "@/lib/api/error";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 export default function RegisterPage() {
   const router = useRouter();
+
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [loading, setLoading] = React.useState(false);
@@ -16,57 +23,62 @@ export default function RegisterPage() {
     e.preventDefault();
     setLoading(true);
     setError(null);
+
     try {
-      await api.post(routes.auth.login(), { email, password });
-      router.push("/jobs");
+      await api.post(routes.auth.register(), { email, password });
+      toast.success("Account created!");
+      router.replace("/jobs");
       router.refresh();
     } catch (err: any) {
-      setError(err?.message ?? "Registration failed");
+      const msg =
+        err instanceof ApiError
+          ? err.message
+          : err?.message ?? "Register failed";
+      setError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
-      <h1 className="text-xl font-semibold">Create account</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Start extracting notes from videos.
-      </p>
+    <div className="mx-auto flex min-h-screen max-w-sm items-center p-6">
+      <form onSubmit={onSubmit} className="w-full space-y-4">
+        <div>
+          <h1 className="text-xl font-semibold">Register</h1>
+          <p className="text-sm text-muted-foreground">
+            Create an account to start processing videos.
+          </p>
+        </div>
 
-      <form className="mt-6 space-y-3" onSubmit={onSubmit}>
-        <input
-          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-          placeholder="Email"
+        <Input
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          autoComplete="email"
+          placeholder="email@domain.com"
+          type="email"
+          required
         />
-        <input
-          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-          placeholder="Password"
-          type="password"
+        <Input
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          autoComplete="new-password"
+          placeholder="Password"
+          type="password"
+          required
         />
 
-        {error ? <div className="text-sm text-red-500">{error}</div> : null}
+        {error ? <div className="text-sm text-destructive">{error}</div> : null}
 
-        <button
-          className="w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
-          disabled={loading}
-        >
-          {loading ? "Creating..." : "Create account"}
-        </button>
+        <Button type="submit" className="w-full" disabled={loading}>
+          {loading ? "Creating…" : "Create account"}
+        </Button>
+
+        <div className="text-sm text-muted-foreground">
+          Already have an account?{" "}
+          <a className="underline" href="/login">
+            Log in
+          </a>
+        </div>
       </form>
-
-      <div className="mt-4 text-sm text-muted-foreground">
-        Already have an account?{" "}
-        <a className="underline" href="/login">
-          Log in
-        </a>
-      </div>
     </div>
   );
 }
