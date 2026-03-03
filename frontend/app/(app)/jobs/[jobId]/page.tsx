@@ -3,7 +3,6 @@
 import { useParams, useRouter } from "next/navigation";
 import { useJob } from "@/lib/jobs/use-job";
 import { useJobProgress, jobProgressUtils } from "@/lib/jobs/use-job-progress";
-import { JobProgressStatus } from "@/components/jobs/job-progress";
 import { Button } from "@/components/ui/button";
 
 export default function JobOverviewPage() {
@@ -19,38 +18,12 @@ export default function JobOverviewPage() {
   if (!job.data) return <div>Not found.</div>;
 
   const status = progress.data?.status ?? job.data.status;
-  const percent = progress.data?.percent;
-  const stage = progress.data?.stage;
-  const message = progress.data?.message;
 
   const terminal = jobProgressUtils.isTerminal(status);
   const isCompleted = String(status).toLowerCase() === "completed";
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <h1 className="text-xl font-semibold">
-            {job.data.title ?? "Job"}{" "}
-            <span className="text-muted-foreground">#{job.data.id}</span>
-          </h1>
-          {job.data.youtube_url ? (
-            <div className="mt-1 truncate text-sm text-muted-foreground">
-              {job.data.youtube_url}
-            </div>
-          ) : null}
-        </div>
-
-        <div className="w-full max-w-sm">
-          <JobProgressStatus
-            status={status}
-            percent={percent}
-            stage={stage ?? undefined}
-            message={message ?? undefined}
-          />
-        </div>
-      </div>
-
       <div className="flex flex-wrap items-center gap-2">
         <Button
           variant="secondary"
@@ -88,6 +61,15 @@ export default function JobOverviewPage() {
           <div>This page updates automatically while the job is running.</div>
           <div className="text-xs">
             Results, Transcript, and Ask unlock once processing completes.
+          </div>
+        </div>
+      ) : null}
+
+      {terminal && !isCompleted ? (
+        <div className="rounded-lg border p-4 text-sm">
+          <div className="font-medium">This job did not complete</div>
+          <div className="mt-1 text-muted-foreground">
+            Status: <span className="font-mono">{status}</span>
           </div>
         </div>
       ) : null}
