@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useJobs } from "@/lib/jobs/use-jobs";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { StatusBadge } from "@/components/jobs/status-badge";
 
 function formatDate(iso?: string) {
   if (!iso) return "—";
@@ -37,7 +37,7 @@ export default function JobsPage() {
   }
 
   return (
-    <div className="space-y-4 p-6">
+    <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Jobs</h1>
         <Link href="/jobs/new">
@@ -45,34 +45,24 @@ export default function JobsPage() {
         </Link>
       </div>
 
-      <div className="divide-y rounded-lg border">
+      <div className="border rounded-lg divide-y">
         {data.map((job) => (
           <Link
             key={job.id}
             href={`/jobs/${job.id}`}
-            className="flex items-center justify-between p-4 transition hover:bg-muted/40"
+            className="flex items-center justify-between p-4 hover:bg-muted/40 transition"
           >
-            <div className="min-w-0">
-              <div className="truncate font-medium">{job.id}</div>
+            <div>
+              <div className="font-medium">{job.id}</div>
               <div className="text-sm text-muted-foreground">
                 {formatDate(job.created_at)}
               </div>
             </div>
 
-            <Badge variant={getBadgeVariant(job.status)} className="shrink-0">
-              {job.status}
-            </Badge>
+            <StatusBadge status={job.status} />
           </Link>
         ))}
       </div>
     </div>
   );
-}
-
-function getBadgeVariant(status: string) {
-  const s = status?.toLowerCase?.() ?? "";
-  if (["completed", "succeeded", "done"].includes(s)) return "default";
-  if (["processing", "running", "queued"].includes(s)) return "secondary";
-  if (["failed", "error"].includes(s)) return "destructive";
-  return "outline";
 }

@@ -1,6 +1,12 @@
 import "./globals.css";
+import type { Metadata } from "next";
 import { ThemeProvider } from "@/components/theme-provider";
-import { ReactQueryProvider } from "@/lib/react-query/provider";
+import { Toaster } from "@/components/ui/sonner";
+
+export const metadata: Metadata = {
+  title: "AI Video Note Extractor",
+  description: "AI-powered video note extraction",
+};
 
 export default function RootLayout({
   children,
@@ -11,7 +17,8 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body>
         <ThemeProvider>
-          <ReactQueryProvider>{children}</ReactQueryProvider>
+          {children}
+          <Toaster />
         </ThemeProvider>
       </body>
     </html>
