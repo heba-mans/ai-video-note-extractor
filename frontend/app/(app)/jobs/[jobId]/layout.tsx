@@ -1,6 +1,6 @@
 import * as React from "react";
-import { JobDetailHeader } from "@/components/jobs/job-detail-header";
 import { JobTabs } from "@/components/jobs/job-tabs";
+import { JobDetailHeader } from "@/components/jobs/job-detail-header";
 
 export default async function JobLayout({
   children,

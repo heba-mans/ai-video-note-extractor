@@ -27,7 +27,6 @@ import {
   ChatMessageBubble,
   type ChatMessage,
 } from "@/components/ask/chat-message";
-import type { Citation } from "@/components/ask/citation-chips";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -59,12 +58,6 @@ function makeLoadingAssistant(): ChatMessage {
   };
 }
 
-function normalizeCitations(input: unknown): Citation[] {
-  if (!Array.isArray(input)) return [];
-  // We trust backend shape; keep runtime check minimal but safe
-  return input.filter((c) => c && typeof c === "object") as Citation[];
-}
-
 function mapHistoryToChatMessages(
   history: {
     id: string;
@@ -81,7 +74,9 @@ function mapHistoryToChatMessages(
     createdAt: Number.isFinite(Date.parse(m.created_at))
       ? Date.parse(m.created_at)
       : Date.now(),
-    citations: normalizeCitations(m.citations ?? []),
+    citations: (Array.isArray(m.citations)
+      ? (m.citations as any[])
+      : undefined) as any,
   }));
 }
 
@@ -106,6 +101,14 @@ function getErrorMessage(e: unknown): string {
   }
   return "Something went wrong.";
 }
+
+const SUGGESTED_PROMPTS = [
+  "Give me a 5-bullet summary of the video.",
+  "What are the key takeaways? List the top 7.",
+  "Extract action items and make them concrete.",
+  "Outline the chapters with timestamps if possible.",
+  "What are the most important terms and definitions?",
+] as const;
 
 export default function AskPage() {
   const { jobId } = useParams<{ jobId: string }>();
@@ -258,7 +261,7 @@ export default function AskPage() {
         role: "assistant",
         content: res.answer,
         createdAt: Date.now(),
-        citations: normalizeCitations(res.citations),
+        citations: (res.citations as any) ?? [],
       };
 
       setLocalMessagesByLocalId((prev) => {
@@ -322,6 +325,10 @@ export default function AskPage() {
     Boolean(activeSession?.session_id) &&
     (historyQuery.isLoading || historyQuery.isFetching) &&
     activeMessages.length === 0;
+
+  const isEmptyThread =
+    activeMessages.length <= 1 &&
+    activeMessages.every((m) => m.role === "assistant");
 
   return (
     <div className="grid h-[calc(100vh-180px)] gap-4 lg:grid-cols-[300px_1fr]">
@@ -388,14 +395,41 @@ export default function AskPage() {
               <Skeleton className="h-4 w-40" />
             </div>
           ) : (
-            activeMessages.map((msg) => (
-              <ChatMessageBubble
-                key={msg.id}
-                jobId={jobId}
-                msg={msg}
-                onRetry={(payload) => sendQuestion(payload)}
-              />
-            ))
+            <>
+              {isEmptyThread ? (
+                <div className="rounded-lg border bg-muted/20 p-4">
+                  <div className="text-sm font-medium">Try a prompt</div>
+                  <div className="mt-1 text-sm text-muted-foreground">
+                    Pick one to get started, or write your own question below.
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {SUGGESTED_PROMPTS.map((p) => (
+                      <Button
+                        key={p}
+                        size="sm"
+                        variant="secondary"
+                        onClick={async () => {
+                          setInput("");
+                          await sendQuestion({ question: p });
+                        }}
+                        disabled={!activeSession || ask.isPending}
+                      >
+                        {p}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {activeMessages.map((msg) => (
+                <ChatMessageBubble
+                  key={msg.id}
+                  jobId={jobId}
+                  msg={msg}
+                  onRetry={(payload) => sendQuestion(payload)}
+                />
+              ))}
+            </>
           )}
         </div>
 
