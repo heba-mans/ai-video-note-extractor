@@ -8,6 +8,7 @@ import { TranscriptSearch } from "@/components/transcript/transcript-search";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { getAppBaseUrl } from "@/lib/env";
 
 function toNumberOrNull(v: string | null) {
   if (!v) return null;
@@ -19,8 +20,6 @@ function parseRangeSeconds(
   v: string | null
 ): { start: number; end: number } | null {
   if (!v) return null;
-
-  // Accept "start-end" (seconds). Allow spaces.
   const raw = v.trim();
   const m = raw.match(/^(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)$/);
   if (!m) return null;
@@ -31,8 +30,6 @@ function parseRangeSeconds(
 
   const s = Math.max(0, Math.min(start, end));
   const e = Math.max(0, Math.max(start, end));
-  if (e < s) return null;
-
   return { start: s, end: e };
 }
 
@@ -43,11 +40,9 @@ function findNearestSegmentIdxByTs(
   const target = tsSeconds * 1000;
   if (!segments.length) return null;
 
-  // Prefer containment
   const hit = segments.find((s) => s.start_ms <= target && target <= s.end_ms);
   if (hit) return hit.idx;
 
-  // Else nearest by start
   let best = segments[0]!;
   let bestDist = Math.abs(best.start_ms - target);
 
@@ -80,7 +75,6 @@ function buildRangeHighlightSet(
     if (firstIdx == null) firstIdx = s.idx;
   }
 
-  // If nothing overlaps, fall back to nearest to start
   if (firstIdx == null) {
     firstIdx = findNearestSegmentIdxByTs(segments, rangeSeconds.start);
     if (firstIdx != null) set.add(firstIdx);
@@ -95,8 +89,8 @@ export default function TranscriptPage() {
   const sp = useSearchParams();
 
   const segFromUrl = toNumberOrNull(sp.get("seg"));
-  const tsFromUrl = toNumberOrNull(sp.get("ts")); // seconds
-  const rangeFromUrl = parseRangeSeconds(sp.get("range")); // "start-end" seconds
+  const tsFromUrl = toNumberOrNull(sp.get("ts"));
+  const rangeFromUrl = parseRangeSeconds(sp.get("range"));
   const qFromUrl = sp.get("q") ?? "";
 
   const [activeIdx, setActiveIdx] = React.useState<number | null>(segFromUrl);
@@ -105,7 +99,6 @@ export default function TranscriptPage() {
   const { data, isLoading, error } = useTranscript(jobId);
   const segments = data ?? [];
 
-  // keep state in sync if user edits URL manually
   React.useEffect(() => {
     setActiveIdx(segFromUrl);
   }, [segFromUrl]);
@@ -137,27 +130,17 @@ export default function TranscriptPage() {
         set: undefined as Set<number> | undefined,
         firstIdx: null as number | null,
       };
-    const { set, firstIdx } = buildRangeHighlightSet(segments, rangeFromUrl);
-    return { set, firstIdx };
+    return buildRangeHighlightSet(segments, rangeFromUrl);
   }, [segments, rangeFromUrl]);
 
-  // FE-17: ts/range -> seg mapping once transcript is loaded
   React.useEffect(() => {
     if (!segments.length) return;
-
-    // If seg already exists, we’re done (user explicitly selected).
     if (segFromUrl != null) return;
 
-    // Priority:
-    // 1) range (scroll to its first segment)
-    // 2) ts (nearest segment)
     let idx: number | null = null;
-
-    if (rangeFromUrl) {
-      idx = rangeHighlight.firstIdx;
-    } else if (tsFromUrl != null) {
+    if (rangeFromUrl) idx = rangeHighlight.firstIdx;
+    else if (tsFromUrl != null)
       idx = findNearestSegmentIdxByTs(segments, tsFromUrl);
-    }
 
     if (idx == null) return;
 
@@ -187,10 +170,11 @@ export default function TranscriptPage() {
     try {
       const params = new URLSearchParams(sp.toString());
       params.set("seg", String(activeIdx));
-      const url = `${
-        window.location.origin
-      }/jobs/${jobId}/transcript?${params.toString()}`;
+
+      const base = getAppBaseUrl();
+      const url = `${base}/jobs/${jobId}/transcript?${params.toString()}`;
       await navigator.clipboard.writeText(url);
+
       toast.success("Copied transcript link");
     } catch {
       toast.error("Copy failed");
