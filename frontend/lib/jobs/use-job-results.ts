@@ -9,7 +9,9 @@ import { ApiError } from "@/lib/api/error";
 export type Chapter = {
   title?: string;
   range_ts?: string;
-  summary?: string; // used by your ChaptersSection
+  summary?: string; // used by ChaptersSection
+  start_seconds?: number;
+  end_seconds?: number;
 };
 
 export type JobResults = {
@@ -34,18 +36,19 @@ function fmtRange(start?: number, end?: number) {
   return `[${fmt(start)}–${fmt(end)}]`;
 }
 
-function unwrapPayload(raw: any) {
+function unwrapPayload(raw: unknown) {
   // backend may return { payload: {...} } or { payload_json: {...} }
   if (raw && typeof raw === "object") {
-    if (raw.payload && typeof raw.payload === "object") return raw.payload;
-    if (raw.payload_json && typeof raw.payload_json === "object")
-      return raw.payload_json;
+    const r = raw as Record<string, unknown>;
+    if (r.payload && typeof r.payload === "object") return r.payload;
+    if (r.payload_json && typeof r.payload_json === "object")
+      return r.payload_json;
   }
   return raw;
 }
 
-function normalize(rawResponse: any): JobResults {
-  const raw = unwrapPayload(rawResponse);
+function normalize(rawResponse: unknown): JobResults {
+  const raw = unwrapPayload(rawResponse) as any;
 
   const summary =
     typeof raw?.summary === "string"
@@ -55,11 +58,20 @@ function normalize(rawResponse: any): JobResults {
       : "";
 
   const chaptersRaw: any[] = Array.isArray(raw?.chapters) ? raw.chapters : [];
-  const chapters: Chapter[] = chaptersRaw.map((c) => ({
-    title: typeof c?.title === "string" ? c.title : undefined,
-    range_ts: fmtRange(c?.start_seconds, c?.end_seconds),
-    summary: typeof c?.bullets_md === "string" ? c.bullets_md : undefined,
-  }));
+  const chapters: Chapter[] = chaptersRaw.map((c) => {
+    const startSeconds =
+      typeof c?.start_seconds === "number" ? c.start_seconds : undefined;
+    const endSeconds =
+      typeof c?.end_seconds === "number" ? c.end_seconds : undefined;
+
+    return {
+      title: typeof c?.title === "string" ? c.title : undefined,
+      range_ts: fmtRange(startSeconds, endSeconds),
+      summary: typeof c?.bullets_md === "string" ? c.bullets_md : undefined,
+      start_seconds: startSeconds,
+      end_seconds: endSeconds,
+    };
+  });
 
   const takeawaysRaw: any[] = Array.isArray(raw?.key_takeaways)
     ? raw.key_takeaways
@@ -91,7 +103,7 @@ export function useJobResults(jobId: string) {
     enabled: Boolean(jobId),
     queryFn: async () => {
       try {
-        const raw = await api.get<any>(routes.jobs.results(jobId));
+        const raw = await api.get<unknown>(routes.jobs.results(jobId));
         return normalize(raw);
       } catch (e) {
         if (e instanceof ApiError && [404, 409, 425].includes(e.status))
