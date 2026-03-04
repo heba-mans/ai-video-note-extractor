@@ -15,6 +15,27 @@ function toNumberOrNull(v: string | null) {
   return Number.isNaN(n) ? null : n;
 }
 
+function parseRangeSeconds(
+  v: string | null
+): { start: number; end: number } | null {
+  if (!v) return null;
+
+  // Accept "start-end" (seconds). Allow spaces.
+  const raw = v.trim();
+  const m = raw.match(/^(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)$/);
+  if (!m) return null;
+
+  const start = Number(m[1]);
+  const end = Number(m[2]);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+
+  const s = Math.max(0, Math.min(start, end));
+  const e = Math.max(0, Math.max(start, end));
+  if (e < s) return null;
+
+  return { start: s, end: e };
+}
+
 function findNearestSegmentIdxByTs(
   segments: { idx: number; start_ms: number; end_ms: number }[],
   tsSeconds: number
@@ -27,8 +48,8 @@ function findNearestSegmentIdxByTs(
   if (hit) return hit.idx;
 
   // Else nearest by start
-  let best = segments[0];
-  let bestDist = Math.abs(best!.start_ms - target);
+  let best = segments[0]!;
+  let bestDist = Math.abs(best.start_ms - target);
 
   for (const s of segments) {
     const d = Math.abs(s.start_ms - target);
@@ -38,7 +59,34 @@ function findNearestSegmentIdxByTs(
     }
   }
 
-  return best!.idx;
+  return best.idx;
+}
+
+function buildRangeHighlightSet(
+  segments: { idx: number; start_ms: number; end_ms: number }[],
+  rangeSeconds: { start: number; end: number }
+): { set: Set<number>; firstIdx: number | null } {
+  const startMs = rangeSeconds.start * 1000;
+  const endMs = rangeSeconds.end * 1000;
+
+  const set = new Set<number>();
+  let firstIdx: number | null = null;
+
+  for (const s of segments) {
+    const overlaps = s.end_ms >= startMs && s.start_ms <= endMs;
+    if (!overlaps) continue;
+
+    set.add(s.idx);
+    if (firstIdx == null) firstIdx = s.idx;
+  }
+
+  // If nothing overlaps, fall back to nearest to start
+  if (firstIdx == null) {
+    firstIdx = findNearestSegmentIdxByTs(segments, rangeSeconds.start);
+    if (firstIdx != null) set.add(firstIdx);
+  }
+
+  return { set, firstIdx };
 }
 
 export default function TranscriptPage() {
@@ -48,6 +96,7 @@ export default function TranscriptPage() {
 
   const segFromUrl = toNumberOrNull(sp.get("seg"));
   const tsFromUrl = toNumberOrNull(sp.get("ts")); // seconds
+  const rangeFromUrl = parseRangeSeconds(sp.get("range")); // "start-end" seconds
   const qFromUrl = sp.get("q") ?? "";
 
   const [activeIdx, setActiveIdx] = React.useState<number | null>(segFromUrl);
@@ -82,23 +131,46 @@ export default function TranscriptPage() {
     router.replace(`/jobs/${jobId}/transcript${qs ? `?${qs}` : ""}`);
   }
 
-  // FE-30: ts -> seg mapping once transcript is loaded
+  const rangeHighlight = React.useMemo(() => {
+    if (!segments.length || !rangeFromUrl)
+      return {
+        set: undefined as Set<number> | undefined,
+        firstIdx: null as number | null,
+      };
+    const { set, firstIdx } = buildRangeHighlightSet(segments, rangeFromUrl);
+    return { set, firstIdx };
+  }, [segments, rangeFromUrl]);
+
+  // FE-17: ts/range -> seg mapping once transcript is loaded
   React.useEffect(() => {
     if (!segments.length) return;
 
-    // If seg already exists, we’re done.
+    // If seg already exists, we’re done (user explicitly selected).
     if (segFromUrl != null) return;
 
-    // If we have a timestamp deep-link, map it to nearest segment.
-    if (tsFromUrl == null) return;
+    // Priority:
+    // 1) range (scroll to its first segment)
+    // 2) ts (nearest segment)
+    let idx: number | null = null;
 
-    const idx = findNearestSegmentIdxByTs(segments, tsFromUrl);
+    if (rangeFromUrl) {
+      idx = rangeHighlight.firstIdx;
+    } else if (tsFromUrl != null) {
+      idx = findNearestSegmentIdxByTs(segments, tsFromUrl);
+    }
+
     if (idx == null) return;
 
     setActiveIdx(idx);
     updateUrl({ seg: idx });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [segments.length, tsFromUrl, segFromUrl]);
+  }, [
+    segments.length,
+    segFromUrl,
+    tsFromUrl,
+    rangeFromUrl,
+    rangeHighlight.firstIdx,
+  ]);
 
   function jumpToIdx(idx: number) {
     setActiveIdx(idx);
@@ -155,6 +227,11 @@ export default function TranscriptPage() {
     );
   }
 
+  const hasRange = Boolean(rangeFromUrl);
+  const rangeBadge = hasRange
+    ? `Range: ${rangeFromUrl!.start}–${rangeFromUrl!.end}s`
+    : null;
+
   return (
     <div className="grid gap-6 lg:grid-cols-[360px_1fr]">
       <div className="space-y-4">
@@ -173,7 +250,14 @@ export default function TranscriptPage() {
 
       <div className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="text-sm font-medium">Transcript</div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="text-sm font-medium">Transcript</div>
+            {rangeBadge ? (
+              <div className="rounded bg-muted px-2 py-1 text-xs text-muted-foreground">
+                {rangeBadge}
+              </div>
+            ) : null}
+          </div>
 
           <div className="flex items-center gap-2">
             {activeIdx != null ? (
@@ -205,6 +289,7 @@ export default function TranscriptPage() {
         <TranscriptViewer
           segments={segments}
           activeIdx={activeIdx}
+          highlightIdxs={rangeHighlight.set}
           onJumpToIdx={jumpToIdx}
         />
       </div>

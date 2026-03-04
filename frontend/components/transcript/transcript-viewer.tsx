@@ -9,10 +9,12 @@ import { cn } from "@/lib/utils";
 export function TranscriptViewer({
   segments,
   activeIdx,
+  highlightIdxs,
   onJumpToIdx,
 }: {
   segments: TranscriptSegment[];
   activeIdx?: number | null;
+  highlightIdxs?: Set<number>;
   onJumpToIdx?: (idx: number) => void;
 }) {
   const parentRef = React.useRef<HTMLDivElement | null>(null);
@@ -32,6 +34,15 @@ export function TranscriptViewer({
     getScrollElement: () => parentRef.current,
     estimateSize: () => 56,
     overscan: 12,
+    // ✅ Smooth scroll for both scrollToIndex and scrollToOffset
+    scrollToFn: (offset, { behavior }, instance) => {
+      const el = instance.scrollElement;
+      if (!el) return;
+      el.scrollTo({
+        top: offset,
+        behavior: behavior ?? "smooth",
+      });
+    },
   });
 
   // Pulse highlight for 1.5s after jump
@@ -43,7 +54,10 @@ export function TranscriptViewer({
     const arrayIndex = idxToArrayIndex.get(activeIdx);
     if (arrayIndex == null) return;
 
-    rowVirtualizer.scrollToIndex(arrayIndex, { align: "center" });
+    rowVirtualizer.scrollToIndex(arrayIndex, {
+      align: "center",
+      behavior: "smooth",
+    });
 
     setPulseIdx(activeIdx);
     const t = window.setTimeout(() => setPulseIdx(null), 1500);
@@ -68,6 +82,7 @@ export function TranscriptViewer({
 
           const isActive = activeIdx === seg.idx;
           const isPulsing = pulseIdx === seg.idx;
+          const inRange = highlightIdxs?.has(seg.idx) ?? false;
 
           return (
             <button
@@ -75,9 +90,13 @@ export function TranscriptViewer({
               type="button"
               className={cn(
                 "absolute left-0 top-0 w-full border-b px-4 py-3 text-left text-sm transition-colors",
-                isActive ? "bg-accent/50" : "bg-background",
+                isActive
+                  ? "bg-accent/60"
+                  : inRange
+                  ? "bg-muted/40"
+                  : "bg-background",
                 isPulsing ? "animate-pulse" : "",
-                "hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                "hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               )}
               style={{ transform: `translateY(${v.start}px)` }}
               onClick={() => onJumpToIdx?.(seg.idx)}
@@ -87,6 +106,9 @@ export function TranscriptViewer({
                   {msToLabel(seg.start_ms)}–{msToLabel(seg.end_ms)}
                 </span>
                 <span>#{seg.idx}</span>
+                {inRange && !isActive ? (
+                  <span className="rounded bg-muted px-2 py-0.5">range</span>
+                ) : null}
               </div>
               <div className="leading-6">{seg.text}</div>
             </button>
