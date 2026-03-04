@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 import { routes } from "@/lib/api/routes";
+import { qk } from "@/lib/query/keys";
 
 export type Job = {
   id: string;
@@ -14,10 +15,11 @@ export type Job = {
 
 export function useJob(jobId: string) {
   return useQuery<Job>({
-    queryKey: ["jobs", "byId", jobId],
+    queryKey: qk.jobs.byId(jobId),
     queryFn: async () => api.get<Job>(routes.jobs.byId(jobId)),
     enabled: Boolean(jobId),
     staleTime: 10_000,
     refetchOnWindowFocus: false,
+    retry: 1,
   });
 }

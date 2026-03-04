@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 import { routes } from "@/lib/api/routes";
+import { qk } from "@/lib/query/keys";
 
 export type TranscriptSegment = {
   idx: number;
@@ -29,7 +30,7 @@ function normalizeSegments(res: TranscriptApiResponse): TranscriptSegment[] {
 
 export function useTranscript(jobId: string) {
   return useQuery<TranscriptSegment[]>({
-    queryKey: ["transcript", jobId],
+    queryKey: qk.jobs.transcript(jobId),
     enabled: Boolean(jobId),
     queryFn: async () => {
       const res = await api.get<TranscriptApiResponse>(
