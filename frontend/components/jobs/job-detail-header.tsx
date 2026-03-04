@@ -2,31 +2,31 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+
 import { useJob } from "@/lib/jobs/use-job";
 import { useJobProgress } from "@/lib/jobs/use-job-progress";
+import { useCancelJob } from "@/lib/jobs/use-cancel-job";
+import { useDeleteJob } from "@/lib/jobs/use-delete-job";
+
 import { JobProgressStatus } from "@/components/jobs/job-progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { useCancelJob } from "@/lib/jobs/use-cancel-job";
-import { toast } from "sonner";
 
 function isTerminal(status: string | undefined) {
   const s = (status ?? "").toLowerCase();
-  return [
-    "completed",
-    "failed",
-    "error",
-    "cancelled",
-    "canceled",
-    "canceled",
-    "canceled",
-  ].includes(s);
+  return ["completed", "failed", "error", "cancelled", "canceled"].includes(s);
 }
 
 export function JobDetailHeader({ jobId }: { jobId: string }) {
+  const router = useRouter();
+
   const job = useJob(jobId);
   const progress = useJobProgress(jobId);
+
   const cancel = useCancelJob(jobId);
+  const del = useDeleteJob(jobId);
 
   if (job.isLoading) {
     return (
@@ -68,7 +68,9 @@ export function JobDetailHeader({ jobId }: { jobId: string }) {
 
   const title = job.data.title?.trim() ? job.data.title : "Job";
 
-  const canCancel = !isTerminal(status) && !cancel.isPending;
+  const terminal = isTerminal(status);
+  const canCancel = !terminal && !cancel.isPending && !del.isPending;
+  const canDelete = !del.isPending && !cancel.isPending;
 
   async function onCancel() {
     const ok = window.confirm(
@@ -79,8 +81,23 @@ export function JobDetailHeader({ jobId }: { jobId: string }) {
     try {
       await cancel.mutateAsync();
       toast.success("Job canceled");
-    } catch (e) {
+    } catch {
       toast.error("Failed to cancel job");
+    }
+  }
+
+  async function onDelete() {
+    const ok = window.confirm(
+      "Delete this job permanently? This cannot be undone."
+    );
+    if (!ok) return;
+
+    try {
+      await del.mutateAsync();
+      toast.success("Job deleted");
+      router.push("/jobs");
+    } catch {
+      toast.error("Failed to delete job");
     }
   }
 
@@ -129,7 +146,7 @@ export function JobDetailHeader({ jobId }: { jobId: string }) {
           </Button>
         ) : null}
 
-        {!isTerminal(status) ? (
+        {!terminal ? (
           <Button
             variant="destructive"
             size="sm"
@@ -139,6 +156,15 @@ export function JobDetailHeader({ jobId }: { jobId: string }) {
             {cancel.isPending ? "Canceling…" : "Cancel job"}
           </Button>
         ) : null}
+
+        <Button
+          variant="destructive"
+          size="sm"
+          onClick={onDelete}
+          disabled={!canDelete}
+        >
+          {del.isPending ? "Deleting…" : "Delete job"}
+        </Button>
       </div>
     </div>
   );
