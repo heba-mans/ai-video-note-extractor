@@ -6,6 +6,8 @@ import { useTranscript } from "@/lib/transcript/use-transcript";
 import { TranscriptViewer } from "@/components/transcript/transcript-viewer";
 import { TranscriptSearch } from "@/components/transcript/transcript-search";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 
 function toNumberOrNull(v: string | null) {
   if (!v) return null;
@@ -94,18 +96,38 @@ export default function TranscriptPage() {
     if (idx == null) return;
 
     setActiveIdx(idx);
-    updateUrl({ seg: idx }); // keep q/ts intact in URLSearchParams
+    updateUrl({ seg: idx });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [segments.length, tsFromUrl, segFromUrl]);
 
   function jumpToIdx(idx: number) {
     setActiveIdx(idx);
-    updateUrl({ seg: idx }); // keep q as-is
+    updateUrl({ seg: idx });
   }
 
   function onQueryChange(nextQ: string) {
     setQuery(nextQ);
-    updateUrl({ q: nextQ }); // keep seg as-is
+    updateUrl({ q: nextQ });
+  }
+
+  async function onCopyLink() {
+    if (activeIdx == null) return;
+    try {
+      const params = new URLSearchParams(sp.toString());
+      params.set("seg", String(activeIdx));
+      const url = `${
+        window.location.origin
+      }/jobs/${jobId}/transcript?${params.toString()}`;
+      await navigator.clipboard.writeText(url);
+      toast.success("Copied transcript link");
+    } catch {
+      toast.error("Copy failed");
+    }
+  }
+
+  function onClearSelection() {
+    setActiveIdx(null);
+    updateUrl({ seg: null });
   }
 
   if (isLoading) {
@@ -144,20 +166,40 @@ export default function TranscriptPage() {
           onQueryChange={onQueryChange}
           onSelectIdx={(idx) => {
             setActiveIdx(idx);
-            // when selecting result, persist BOTH q and seg
             updateUrl({ q: query, seg: idx });
           }}
         />
       </div>
 
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="text-sm font-medium">Transcript</div>
-          {activeIdx != null ? (
-            <div className="text-xs text-muted-foreground">
-              Jumped to #{activeIdx}
-            </div>
-          ) : null}
+
+          <div className="flex items-center gap-2">
+            {activeIdx != null ? (
+              <div className="text-xs text-muted-foreground">
+                Selected #{activeIdx}
+              </div>
+            ) : null}
+
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={onCopyLink}
+              disabled={activeIdx == null}
+            >
+              Copy link
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onClearSelection}
+              disabled={activeIdx == null}
+            >
+              Clear
+            </Button>
+          </div>
         </div>
 
         <TranscriptViewer
