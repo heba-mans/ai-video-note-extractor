@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 import { routes } from "@/lib/api/routes";
@@ -68,14 +68,19 @@ function computeIntervalMs(p?: JobProgress) {
   if (!p) return 1500;
   if (isTerminal(p.status)) return false;
 
-  const s = p.status.toLowerCase();
+  const s = (p.status ?? "").toLowerCase();
   if (s === "queued") return 1200;
-  if (s === "processing" || s === "running") return 1500;
+
+  // common “active” states
+  if (["processing", "running", "downloading", "transcribing"].includes(s))
+    return 1500;
+
   return 2000;
 }
 
 export function useJobProgress(jobId: string) {
   const qc = useQueryClient();
+  const lastTerminalStatusRef = useRef<string | null>(null);
 
   const query = useQuery<JobProgressApiResponse>({
     queryKey: qk.jobs.progress(jobId),
@@ -95,11 +100,23 @@ export function useJobProgress(jobId: string) {
   }, [query.data]);
 
   useEffect(() => {
-    if (!normalized?.status) return;
-    if (!isTerminal(normalized.status)) return;
+    const status = normalized?.status;
+    if (!status) return;
+
+    const terminal = isTerminal(status);
+    if (!terminal) {
+      lastTerminalStatusRef.current = null;
+      return;
+    }
+
+    // Prevent repeated invalidations if the component re-renders while terminal.
+    if (lastTerminalStatusRef.current === status) return;
+    lastTerminalStatusRef.current = status;
 
     qc.invalidateQueries({ queryKey: qk.jobs.byId(jobId) });
     qc.invalidateQueries({ queryKey: qk.jobs.list() });
+
+    // These become available (or finalized) once terminal.
     qc.invalidateQueries({ queryKey: qk.jobs.results(jobId) });
     qc.invalidateQueries({ queryKey: qk.jobs.transcript(jobId) });
   }, [normalized?.status, jobId, qc]);

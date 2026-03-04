@@ -2,7 +2,6 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useJob } from "@/lib/jobs/use-job";
-import { useJobProgress, jobProgressUtils } from "@/lib/jobs/use-job-progress";
 import { Button } from "@/components/ui/button";
 
 export default function JobOverviewPage() {
@@ -10,17 +9,13 @@ export default function JobOverviewPage() {
   const { jobId } = useParams<{ jobId: string }>();
 
   const job = useJob(jobId);
-  const progress = useJobProgress(jobId);
 
   if (job.isLoading) return <div>Loading job...</div>;
   if (job.error)
     return <div className="text-destructive">Failed to load job.</div>;
   if (!job.data) return <div>Not found.</div>;
 
-  const status = progress.data?.status ?? job.data.status;
-
-  const terminal = jobProgressUtils.isTerminal(status);
-  const isCompleted = String(status).toLowerCase() === "completed";
+  const isCompleted = (job.data.status ?? "").toLowerCase() === "completed";
 
   return (
     <div className="space-y-4">
@@ -61,15 +56,6 @@ export default function JobOverviewPage() {
           <div>This page updates automatically while the job is running.</div>
           <div className="text-xs">
             Results, Transcript, and Ask unlock once processing completes.
-          </div>
-        </div>
-      ) : null}
-
-      {terminal && !isCompleted ? (
-        <div className="rounded-lg border p-4 text-sm">
-          <div className="font-medium">This job did not complete</div>
-          <div className="mt-1 text-muted-foreground">
-            Status: <span className="font-mono">{status}</span>
           </div>
         </div>
       ) : null}
