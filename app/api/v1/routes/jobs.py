@@ -383,3 +383,25 @@ def list_jobs(
     jobs = list_jobs_for_user(db, user_id=user.id, limit=limit, offset=offset)
     total = count_jobs_for_user(db, user_id=user.id)
     return JobListResponse(items=[JobResponse.model_validate(j) for j in jobs], total=total)
+
+@router.post("/jobs/{job_id}/delete", status_code=status.HTTP_200_OK)
+def delete_job_route(
+    job_id: UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    job = get_job(db, job_id)
+    if job is None or job.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    try:
+        from app.db.repositories.jobs import delete_job as delete_job_repo
+        delete_job_repo(db, job)
+    except Exception as e:
+        # If FK constraints prevent deletion, return a clear message.
+        raise HTTPException(
+            status_code=409,
+            detail="Unable to delete job (it may have dependent records).",
+        ) from e
+
+    return {"status": "ok"}

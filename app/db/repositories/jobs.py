@@ -111,3 +111,7 @@ def get_job_for_update(db: Session, job_id) -> Job | None:
 
 def now_utc() -> datetime:
     return datetime.utcnow()
+
+def delete_job(db: Session, job: Job) -> None:
+    db.delete(job)
+    db.commit()
