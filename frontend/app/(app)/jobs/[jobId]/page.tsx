@@ -3,6 +3,8 @@
 import { useParams, useRouter } from "next/navigation";
 import { useJob } from "@/lib/jobs/use-job";
 import { Button } from "@/components/ui/button";
+import { ErrorState } from "@/components/ui/error-state";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export default function JobOverviewPage() {
   const router = useRouter();
@@ -10,10 +12,35 @@ export default function JobOverviewPage() {
 
   const job = useJob(jobId);
 
-  if (job.isLoading) return <div>Loading job...</div>;
-  if (job.error)
-    return <div className="text-destructive">Failed to load job.</div>;
-  if (!job.data) return <div>Not found.</div>;
+  if (job.isLoading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-10 w-72" />
+        <Skeleton className="h-24 w-full" />
+      </div>
+    );
+  }
+
+  if (job.error) {
+    return (
+      <ErrorState
+        title="Failed to load job"
+        description="Please try again."
+        onRetry={() => job.refetch()}
+        backHref="/jobs"
+      />
+    );
+  }
+
+  if (!job.data) {
+    return (
+      <ErrorState
+        title="Job not found"
+        description="This job may have been deleted."
+        backHref="/jobs"
+      />
+    );
+  }
 
   const isCompleted = (job.data.status ?? "").toLowerCase() === "completed";
 
