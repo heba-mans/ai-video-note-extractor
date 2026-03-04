@@ -27,6 +27,7 @@ import {
   ChatMessageBubble,
   type ChatMessage,
 } from "@/components/ask/chat-message";
+import type { Citation } from "@/components/ask/citation-chips";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -48,6 +49,22 @@ function makeAssistant(text: string): ChatMessage {
   };
 }
 
+function makeLoadingAssistant(): ChatMessage {
+  return {
+    id: nanoid(),
+    role: "assistant",
+    content: "",
+    createdAt: Date.now(),
+    status: "loading",
+  };
+}
+
+function normalizeCitations(input: unknown): Citation[] {
+  if (!Array.isArray(input)) return [];
+  // We trust backend shape; keep runtime check minimal but safe
+  return input.filter((c) => c && typeof c === "object") as Citation[];
+}
+
 function mapHistoryToChatMessages(
   history: {
     id: string;
@@ -64,7 +81,7 @@ function mapHistoryToChatMessages(
     createdAt: Number.isFinite(Date.parse(m.created_at))
       ? Date.parse(m.created_at)
       : Date.now(),
-    citations: m.citations ?? undefined,
+    citations: normalizeCitations(m.citations ?? []),
   }));
 }
 
@@ -77,25 +94,35 @@ function makeNewLocalSession(): StoredChatSession {
   };
 }
 
+function getErrorMessage(e: unknown): string {
+  if (!e) return "Something went wrong.";
+  if (typeof e === "string") return e;
+  if (
+    typeof e === "object" &&
+    "message" in e &&
+    typeof (e as any).message === "string"
+  ) {
+    return (e as any).message;
+  }
+  return "Something went wrong.";
+}
+
 export default function AskPage() {
   const { jobId } = useParams<{ jobId: string }>();
 
   const ask = useAsk(jobId);
   const chatSessions = useChatSessions(jobId);
 
-  // Ensure at least one session exists
   React.useEffect(() => {
     chatSessions.ensureAtLeastOne(makeNewLocalSession);
   }, [chatSessions]);
 
   const sessions = chatSessions.sessions;
 
-  // Restore active session from localStorage (per job)
   const [activeLocalId, setActiveLocalId] = React.useState<string | null>(() =>
     readActiveSessionLocalId(jobId)
   );
 
-  // Restore messages cache from localStorage (per job)
   const [localMessagesByLocalId, setLocalMessagesByLocalId] = React.useState<
     Record<string, ChatMessage[]>
   >(() => readMessagesByLocalId(jobId));
@@ -103,7 +130,6 @@ export default function AskPage() {
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const [input, setInput] = React.useState("");
 
-  // If active session is missing, default to the first session once loaded
   React.useEffect(() => {
     if (!sessions.length) return;
 
@@ -113,13 +139,10 @@ export default function AskPage() {
     });
   }, [sessions]);
 
-  // Persist active session choice
   React.useEffect(() => {
-    if (!activeLocalId) return;
-    writeActiveSessionLocalId(jobId, activeLocalId);
+    if (activeLocalId) writeActiveSessionLocalId(jobId, activeLocalId);
   }, [jobId, activeLocalId]);
 
-  // Persist messages (small payloads in dev; still fine for prod MVP)
   React.useEffect(() => {
     writeMessagesByLocalId(jobId, localMessagesByLocalId);
   }, [jobId, localMessagesByLocalId]);
@@ -132,10 +155,8 @@ export default function AskPage() {
   const activeMessages: ChatMessage[] =
     (activeSession && localMessagesByLocalId[activeSession.local_id]) ?? [];
 
-  // Load backend history for synced sessions
   const historyQuery = useChatHistory(jobId, activeSession?.session_id ?? null);
 
-  // When history loads for a synced session, overwrite local cache for that session
   React.useEffect(() => {
     if (!activeSession?.session_id) return;
     if (!historyQuery.data) return;
@@ -148,7 +169,6 @@ export default function AskPage() {
     }));
   }, [activeSession?.session_id, activeSession?.local_id, historyQuery.data]);
 
-  // Seed welcome message ONLY for unsynced sessions (and only if empty)
   React.useEffect(() => {
     if (!activeSession) return;
     if (activeSession.session_id) return;
@@ -164,12 +184,7 @@ export default function AskPage() {
         ),
       ],
     }));
-  }, [
-    activeSession?.local_id,
-    activeSession?.session_id,
-    activeSession,
-    localMessagesByLocalId,
-  ]);
+  }, [activeSession, localMessagesByLocalId]);
 
   const canSend =
     Boolean(activeSession) && input.trim().length > 0 && !ask.isPending;
@@ -195,11 +210,11 @@ export default function AskPage() {
     }));
   }
 
-  async function onSend() {
-    if (!activeSession || !canSend) return;
+  async function sendQuestion(args: { question: string }) {
+    if (!activeSession) return;
 
-    const question = input.trim();
-    setInput("");
+    const question = args.question.trim();
+    if (!question) return;
 
     const userMsg: ChatMessage = {
       id: nanoid(),
@@ -208,11 +223,14 @@ export default function AskPage() {
       createdAt: Date.now(),
     };
 
+    const loadingMsg = makeLoadingAssistant();
+
     setLocalMessagesByLocalId((prev) => ({
       ...prev,
       [activeSession.local_id]: [
         ...(prev[activeSession.local_id] ?? []),
         userMsg,
+        loadingMsg,
       ],
     }));
 
@@ -240,34 +258,44 @@ export default function AskPage() {
         role: "assistant",
         content: res.answer,
         createdAt: Date.now(),
-        citations: res.citations ?? [],
+        citations: normalizeCitations(res.citations),
       };
 
-      setLocalMessagesByLocalId((prev) => ({
-        ...prev,
-        [activeSession.local_id]: [
-          ...(prev[activeSession.local_id] ?? []),
-          assistantMsg,
-        ],
-      }));
+      setLocalMessagesByLocalId((prev) => {
+        const cur = prev[activeSession.local_id] ?? [];
+        const next = cur.map((m) =>
+          m.id === loadingMsg.id ? assistantMsg : m
+        );
+        return { ...prev, [activeSession.local_id]: next };
+      });
     } catch (e: unknown) {
-      const message =
-        e &&
-        typeof e === "object" &&
-        "message" in e &&
-        typeof (e as any).message === "string"
-          ? (e as any).message
-          : "Something went wrong.";
+      const errorText = getErrorMessage(e);
 
-      setLocalMessagesByLocalId((prev) => ({
-        ...prev,
-        [activeSession.local_id]: [
-          ...(prev[activeSession.local_id] ?? []),
-          makeAssistant(`Error: ${message}`),
-        ],
-      }));
+      const errorMsg: ChatMessage = {
+        id: nanoid(),
+        role: "assistant",
+        content: "Failed to answer.",
+        createdAt: Date.now(),
+        status: "error",
+        errorText,
+        retryPayload: { question },
+      };
+
+      setLocalMessagesByLocalId((prev) => {
+        const cur = prev[activeSession.local_id] ?? [];
+        const next = cur.map((m) => (m.id === loadingMsg.id ? errorMsg : m));
+        return { ...prev, [activeSession.local_id]: next };
+      });
+
       toast.error("Message failed");
     }
+  }
+
+  async function onSend() {
+    if (!activeSession || !canSend) return;
+    const q = input.trim();
+    setInput("");
+    await sendQuestion({ question: q });
   }
 
   function onComposerKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -283,7 +311,6 @@ export default function AskPage() {
     hasBackendSession: Boolean(s.session_id),
   }));
 
-  // Scroll to bottom on changes
   const chatRef = React.useRef<HTMLDivElement | null>(null);
   React.useEffect(() => {
     const el = chatRef.current;
@@ -360,19 +387,16 @@ export default function AskPage() {
               <Skeleton className="h-4 w-56" />
               <Skeleton className="h-4 w-40" />
             </div>
-          ) : activeMessages.length === 0 && activeSession.session_id ? (
-            <div className="text-sm text-muted-foreground">
-              No messages found for this session.
-            </div>
           ) : (
             activeMessages.map((msg) => (
-              <ChatMessageBubble key={msg.id} jobId={jobId} msg={msg} />
+              <ChatMessageBubble
+                key={msg.id}
+                jobId={jobId}
+                msg={msg}
+                onRetry={(payload) => sendQuestion(payload)}
+              />
             ))
           )}
-
-          {ask.isPending ? (
-            <div className="text-xs text-muted-foreground">Thinking…</div>
-          ) : null}
         </div>
 
         <div className="rounded-lg border p-3">
@@ -382,14 +406,14 @@ export default function AskPage() {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onComposerKeyDown}
             rows={3}
-            disabled={!activeSession}
+            disabled={!activeSession || ask.isPending}
           />
 
           <div className="mt-2 flex justify-end gap-2">
             <Button
               variant="secondary"
               onClick={() => setInput("")}
-              disabled={!input.trim() || !activeSession}
+              disabled={!input.trim() || !activeSession || ask.isPending}
             >
               Clear
             </Button>
@@ -397,6 +421,12 @@ export default function AskPage() {
               Send
             </Button>
           </div>
+
+          {ask.isPending ? (
+            <div className="mt-2 text-xs text-muted-foreground">
+              Generating answer…
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
