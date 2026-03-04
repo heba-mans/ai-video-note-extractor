@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { MoreHorizontal, Copy, ExternalLink, Trash2, Ban } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { getAppBaseUrl } from "@/lib/env";
 import { useCancelJob } from "@/lib/jobs/use-cancel-job";
 import { useDeleteJob } from "@/lib/jobs/use-delete-job";
 
@@ -60,14 +61,11 @@ export function JobActionsMenu({
   const canCancel = !terminal && !cancel.isPending && !del.isPending;
   const canDelete = !del.isPending && !cancel.isPending;
 
-  const jobLink =
-    typeof window !== "undefined"
-      ? `${window.location.origin}/jobs/${jobId}`
-      : `/jobs/${jobId}`;
-
   async function onCopyLink() {
     try {
-      await copyToClipboard(jobLink);
+      const base = getAppBaseUrl();
+      const url = `${base}/jobs/${jobId}`;
+      await copyToClipboard(url);
       toast.success("Copied job link");
     } catch {
       toast.error("Copy failed");

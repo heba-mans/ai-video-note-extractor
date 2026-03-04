@@ -9,3 +9,17 @@ export function assertEnv() {
     );
   }
 }
+
+export function getAppBaseUrl(): string {
+  // Prefer configured public base URL for sharing/demo (e.g. ngrok or real domain).
+  const fromEnv = process.env.NEXT_PUBLIC_APP_BASE_URL?.trim();
+  if (fromEnv) return fromEnv.replace(/\/+$/, "");
+
+  // Fallback: current origin in browser.
+  if (typeof window !== "undefined" && window.location?.origin) {
+    return window.location.origin;
+  }
+
+  // Last resort (server/build-time)
+  return "http://localhost:3000";
+}
