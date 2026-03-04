@@ -1,16 +1,21 @@
 "use client";
 
-import { useMemo } from "react";
+import Link from "next/link";
+import { useMemo, useState } from "react";
 import { useParams } from "next/navigation";
+
 import { useJobResults } from "@/lib/jobs/use-job-results";
 import type { Chapter } from "@/lib/jobs/use-job-results";
+
 import { SectionCard } from "@/components/results/section-card";
 import { CopyButton } from "@/components/results/copy-button";
 import { Markdown } from "@/components/results/markdown";
 import { BulletsSection } from "@/components/results/bullets";
 import { ChaptersSection } from "@/components/results/chapters";
+
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 function buildCombinedMarkdown(args: {
   summary: string;
@@ -51,11 +56,41 @@ function buildCombinedMarkdown(args: {
   return lines.join("\n").trim() + "\n";
 }
 
+function cleanMockNoise(text: string) {
+  // Best-effort cleanup for mock mode noise without damaging real content.
+  // Removes common debug lines like "Preview: ### Chunk ..." and "Notes: Replace mock..."
+  const lines = text.split("\n");
+  const kept = lines.filter((l) => {
+    const s = l.trim();
+    if (!s) return true;
+
+    const lower = s.toLowerCase();
+    if (lower.startsWith("preview:")) return false;
+    if (lower.startsWith("notes:")) return false;
+    if (lower.includes("replace mock")) return false;
+
+    // Remove leading "(MOCK)" token but keep line
+    return true;
+  });
+
+  return kept
+    .join("\n")
+    .replace(/\(MOCK\)\s*/g, "")
+    .replace(/\s+\n/g, "\n");
+}
+
+function isLong(text: string) {
+  return text.trim().length > 900;
+}
+
 export default function ResultsPage() {
   const { jobId } = useParams<{ jobId: string }>();
   const { data, isLoading, error } = useJobResults(jobId);
 
-  const summary = typeof data?.summary === "string" ? data.summary : "";
+  const [cleanView, setCleanView] = useState(true);
+  const [summaryExpanded, setSummaryExpanded] = useState(false);
+
+  const summaryRaw = typeof data?.summary === "string" ? data.summary : "";
   const chapters = Array.isArray(data?.chapters) ? data!.chapters! : [];
   const takeaways = Array.isArray(data?.key_takeaways)
     ? data!.key_takeaways!
@@ -65,6 +100,11 @@ export default function ResultsPage() {
     typeof data?.formatted_markdown === "string"
       ? data.formatted_markdown
       : null;
+
+  const summary = useMemo(() => {
+    const s = summaryRaw ?? "";
+    return cleanView ? cleanMockNoise(s) : s;
+  }, [summaryRaw, cleanView]);
 
   const hasAnything =
     Boolean(summary?.trim()) ||
@@ -109,19 +149,24 @@ export default function ResultsPage() {
   if (!data || !hasAnything) {
     return (
       <div className="rounded-lg border p-4 text-sm text-muted-foreground">
-        Results aren’t ready yet. Come back when the job is completed.
+        Results aren’t ready yet. If the job is still processing, check the
+        Overview tab.
       </div>
     );
   }
 
+  const showSummary = Boolean(summary.trim());
+  const longSummary = showSummary && isLong(summary);
+
   return (
     <div className="space-y-4">
+      {/* Hero card */}
       <SectionCard
-        title="Your notes"
-        description="Copy everything, or use the sections below."
+        title="Notes ready"
+        description="Generated from the video transcript. Use sections below, export, or ask follow-ups."
         right={<CopyButton text={copyAll} />}
       >
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Badge variant="secondary">{chapters.length} chapters</Badge>
           <Badge variant="secondary">{takeaways.length} takeaways</Badge>
           <Badge variant="secondary">{actions.length} action items</Badge>
@@ -130,22 +175,65 @@ export default function ResultsPage() {
           ) : null}
         </div>
 
-        <div className="text-sm text-muted-foreground">
-          Tip: Click “Open in transcript” on a chapter (when available) to jump
-          to that timestamp.
+        <div className="flex flex-wrap gap-2 pt-1">
+          <Button asChild variant="secondary" size="sm">
+            <Link href={`/jobs/${jobId}/export`}>Export</Link>
+          </Button>
+          <Button asChild variant="secondary" size="sm">
+            <Link href={`/jobs/${jobId}/transcript`}>Open transcript</Link>
+          </Button>
+          <Button asChild variant="secondary" size="sm">
+            <Link href={`/jobs/${jobId}/ask`}>Ask follow-up</Link>
+          </Button>
+
+          <Button
+            variant={cleanView ? "default" : "secondary"}
+            size="sm"
+            onClick={() => setCleanView((v) => !v)}
+            title="Hides mock/debug lines in local testing"
+          >
+            {cleanView ? "Clean view: On" : "Clean view: Off"}
+          </Button>
         </div>
       </SectionCard>
 
-      {summary?.trim() ? (
-        <SectionCard title="Summary" right={<CopyButton text={summary} />}>
-          <Markdown content={summary} />
-        </SectionCard>
-      ) : (
-        <SectionCard title="Summary">
+      {/* Summary */}
+      <SectionCard
+        title="Summary"
+        description="High-level overview of the video."
+        right={showSummary ? <CopyButton text={summary} /> : undefined}
+      >
+        {!showSummary ? (
           <div className="text-sm text-muted-foreground">No summary yet.</div>
-        </SectionCard>
-      )}
+        ) : (
+          <div className="space-y-3">
+            <div
+              className={longSummary && !summaryExpanded ? "line-clamp-6" : ""}
+            >
+              <Markdown content={summary} />
+            </div>
 
+            {longSummary ? (
+              <div>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setSummaryExpanded((v) => !v)}
+                >
+                  {summaryExpanded ? "Show less" : "Show more"}
+                </Button>
+              </div>
+            ) : null}
+          </div>
+        )}
+      </SectionCard>
+
+      {/* Chapters moved up for better flow */}
+      {chapters.length ? (
+        <ChaptersSection jobId={jobId} chapters={chapters} />
+      ) : null}
+
+      {/* Takeaways + actions */}
       <div className="grid gap-4 lg:grid-cols-2">
         <BulletsSection
           title="Key takeaways"
@@ -161,10 +249,7 @@ export default function ResultsPage() {
         />
       </div>
 
-      {chapters.length ? (
-        <ChaptersSection jobId={jobId} chapters={chapters} />
-      ) : null}
-
+      {/* Optional: raw formatted markdown */}
       {formatted?.trim() ? (
         <SectionCard
           title="Formatted markdown"
