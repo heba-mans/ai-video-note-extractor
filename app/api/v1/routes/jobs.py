@@ -3,34 +3,61 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
 from app.api.deps_auth import get_current_user
 from app.api.v1.schemas.job_progress import JobProgressResponse
 from app.api.v1.schemas.jobs import JobCreateRequest, JobListResponse, JobResponse
+from app.core.config import settings
 from app.db.models.job import Job, JobStatus
 from app.db.models.user import User
+from app.db.repositories.chat import get_chat_session, list_messages
 from app.db.repositories.final_results import get_final_result
-from app.db.repositories.jobs import count_jobs_for_user, get_job, list_jobs_for_user
+from app.db.repositories.jobs import (
+    count_jobs_for_user,
+    delete_job as delete_job_repo,
+    get_job,
+    list_jobs_for_user,
+    update_job_fields,
+)
 from app.db.repositories.transcript import count_segments, fetch_segments_page
 from app.db.repositories.transcript_search import count_search_hits, search_segments
+from app.schemas.ask_video import AskVideoCitation, AskVideoRequest, AskVideoResponse
 from app.schemas.export import MarkdownExportOut
 from app.schemas.results import JobResultsOut
 from app.schemas.transcript import TranscriptPageOut
 from app.schemas.transcript_search import TranscriptSearchHit, TranscriptSearchResponse
-from app.services.job_service import create_or_get_job_for_youtube
-from app.workers.celery_app import celery_app
-from app.services.rate_limiter import rate_limit_or_429
-from app.core.config import settings
-from app.schemas.ask_video import AskVideoRequest, AskVideoResponse, AskVideoCitation
 from app.services.ask_video_service import ask_video
-from app.db.repositories.chat import get_chat_session, list_messages
-from fastapi.responses import JSONResponse
-from app.db.repositories.jobs import count_jobs_for_user, get_job, list_jobs_for_user, update_job_fields
+from app.services.job_service import create_or_get_job_for_youtube
+from app.services.rate_limiter import rate_limit_or_429
+from app.workers.celery_app import celery_app
 
 router = APIRouter(tags=["Jobs"])
+
+
+def job_to_response(job: Job) -> JobResponse:
+    """
+    FE-26 polish: include created_at + youtube_url + title in JobResponse.
+    created_at is derived from Job.requested_at.
+    youtube_url/title are derived from the joined Video relationship.
+    """
+    created_at = getattr(job, "requested_at", None)
+
+    youtube_url = None
+    title = None
+    if getattr(job, "video", None) is not None:
+        youtube_url = getattr(job.video, "canonical_url", None)
+        title = getattr(job.video, "title", None)
+
+    return JobResponse(
+        id=job.id,
+        status=job.status,
+        created_at=created_at,
+        youtube_url=youtube_url,
+        title=title,
+    )
 
 
 @router.post("/jobs", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
@@ -51,6 +78,7 @@ def create_job(
         limit=settings.rate_limit_jobs_per_minute,
         window_seconds=60,
     )
+
     try:
         job = create_or_get_job_for_youtube(
             db,
@@ -66,7 +94,12 @@ def create_job(
         args=[str(job.id)],
     )
 
-    return JobResponse.model_validate(job)
+    # Re-fetch to ensure joined Video is loaded
+    job = get_job(db, job.id)
+    if job is None:
+        raise HTTPException(status_code=500, detail="Failed to create job")
+
+    return job_to_response(job)
 
 
 @router.get("/jobs/{job_id}", response_model=JobResponse)
@@ -76,10 +109,10 @@ def get_job_status(
     user: User = Depends(get_current_user),
 ) -> JobResponse:
     job = get_job(db, job_id)
-    if not job or job.user_id != user.id:
+    if job is None or job.user_id != user.id:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    return JobResponse.model_validate(job)
+    return job_to_response(job)
 
 
 @router.get("/jobs", response_model=JobListResponse)
@@ -93,9 +126,63 @@ def list_jobs(
     total = count_jobs_for_user(db, user.id)
 
     return JobListResponse(
-        items=[JobResponse.model_validate(j) for j in items],
+        items=[job_to_response(j) for j in items],
         total=total,
     )
+
+
+@router.post("/jobs/{job_id}/cancel", response_model=JobResponse, status_code=status.HTTP_200_OK)
+def cancel_job(
+    job_id: UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> JobResponse:
+    """
+    Cancel an in-progress job.
+    This is a *soft cancel*: marks job CANCELED and prevents future status/progress updates.
+    """
+    job = get_job(db, job_id)
+    if job is None or job.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    s = (job.status or "").upper()
+    if s in {JobStatus.COMPLETED.value, JobStatus.FAILED.value, JobStatus.CANCELED.value}:
+        raise HTTPException(status_code=409, detail=f"Job is already terminal: {job.status}")
+
+    update_job_fields(
+        db,
+        job,
+        status=JobStatus.CANCELED.value,
+        stage="canceled",
+        error_code="CANCELED",
+        error_message="Canceled by user",
+    )
+
+    job = get_job(db, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job_to_response(job)
+
+
+@router.post("/jobs/{job_id}/delete", status_code=status.HTTP_200_OK)
+def delete_job_route(
+    job_id: UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    job = get_job(db, job_id)
+    if job is None or job.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    try:
+        delete_job_repo(db, job)
+    except Exception as e:
+        raise HTTPException(
+            status_code=409,
+            detail="Unable to delete job (it may have dependent records).",
+        ) from e
+
+    return {"status": "ok"}
 
 
 @router.get("/jobs/{job_id}/progress", response_model=JobProgressResponse)
@@ -105,7 +192,7 @@ def get_job_progress(
     user: User = Depends(get_current_user),
 ) -> JobProgressResponse:
     job = get_job(db, job_id)
-    if not job or job.user_id != user.id:
+    if job is None or job.user_id != user.id:
         raise HTTPException(status_code=404, detail="Job not found")
 
     return JobProgressResponse.model_validate(job)
@@ -214,8 +301,9 @@ def export_job_markdown(
         return MarkdownExportOut(job_id=str(job_id), markdown=markdown)
 
     filename = f"job-{job_id}.md"
-    headers = {"Content-Disposition": f'attachment; filename=\"{filename}\"'}
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
     return PlainTextResponse(markdown, media_type="text/markdown", headers=headers)
+
 
 @router.post("/jobs/{job_id}/ask", response_model=AskVideoResponse)
 def ask_the_video(
@@ -253,7 +341,7 @@ def ask_the_video(
     except ValueError as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e)) from e
-    except Exception as e:
+    except Exception:
         db.rollback()
         raise
 
@@ -265,8 +353,8 @@ def ask_the_video(
         citations=[AskVideoCitation(**c) for c in citations],
     )
 
-    # ✅ Force JSON encoding (escapes any control chars safely)
     return JSONResponse(content=result.model_dump())
+
 
 @router.get("/jobs/{job_id}/chat/{session_id}")
 def get_chat_history(
@@ -298,110 +386,3 @@ def get_chat_history(
             for m in msgs
         ],
     }
-
-@router.post("/jobs", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
-def create_job(
-    payload: JobCreateRequest,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-) -> JobResponse:
-    rate_limit_or_429(
-        scope="jobs:create",
-        identity=str(user.id),
-        limit=settings.rate_limit_jobs_per_minute,
-        window_seconds=60,
-    )
-    try:
-        job = create_or_get_job_for_youtube(
-            db,
-            user_id=user.id,
-            youtube_url=payload.youtube_url,
-            params=payload.params,
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-
-    celery_app.send_task(
-        "app.workers.tasks.process_job.process_job",
-        args=[str(job.id)],
-    )
-
-    return JobResponse.model_validate(job)
-
-
-@router.post("/jobs/{job_id}/cancel", response_model=JobResponse, status_code=status.HTTP_200_OK)
-def cancel_job(
-    job_id: UUID,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-) -> JobResponse:
-    """
-    Cancel an in-progress job.
-    This is a *soft cancel*: it marks the job CANCELED and prevents future status/progress updates.
-    """
-    job = get_job(db, job_id)
-    if job is None or job.user_id != user.id:
-        raise HTTPException(status_code=404, detail="Job not found")
-
-    s = (job.status or "").upper()
-    if s in {JobStatus.COMPLETED.value, JobStatus.FAILED.value, JobStatus.CANCELED.value}:
-        raise HTTPException(status_code=409, detail=f"Job is already terminal: {job.status}")
-
-    update_job_fields(
-        db,
-        job,
-        status=JobStatus.CANCELED.value,
-        stage="canceled",
-        progress=job.progress,
-        completed_at=job.completed_at or None,  # keep as-is
-        error_code="CANCELED",
-        error_message="Canceled by user",
-    )
-
-    return JobResponse.model_validate(job)
-
-
-@router.get("/jobs/{job_id}", response_model=JobResponse)
-def get_job_route(
-    job_id: UUID,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-) -> JobResponse:
-    job = get_job(db, job_id)
-    if job is None or job.user_id != user.id:
-        raise HTTPException(status_code=404, detail="Job not found")
-    return JobResponse.model_validate(job)
-
-
-@router.get("/jobs", response_model=JobListResponse)
-def list_jobs(
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-    limit: int = Query(50, ge=1, le=100),
-    offset: int = Query(0, ge=0),
-) -> JobListResponse:
-    jobs = list_jobs_for_user(db, user_id=user.id, limit=limit, offset=offset)
-    total = count_jobs_for_user(db, user_id=user.id)
-    return JobListResponse(items=[JobResponse.model_validate(j) for j in jobs], total=total)
-
-@router.post("/jobs/{job_id}/delete", status_code=status.HTTP_200_OK)
-def delete_job_route(
-    job_id: UUID,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    job = get_job(db, job_id)
-    if job is None or job.user_id != user.id:
-        raise HTTPException(status_code=404, detail="Job not found")
-
-    try:
-        from app.db.repositories.jobs import delete_job as delete_job_repo
-        delete_job_repo(db, job)
-    except Exception as e:
-        # If FK constraints prevent deletion, return a clear message.
-        raise HTTPException(
-            status_code=409,
-            detail="Unable to delete job (it may have dependent records).",
-        ) from e
-
-    return {"status": "ok"}

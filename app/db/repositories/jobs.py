@@ -5,7 +5,7 @@ from typing import Any
 
 from sqlalchemy import desc
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.db.models.job import Job, JobStatus
 
@@ -32,12 +32,18 @@ def create_job(
 
 
 def get_job(db: Session, job_id) -> Job | None:
-    return db.query(Job).filter(Job.id == job_id).one_or_none()
+    return (
+        db.query(Job)
+        .options(joinedload(Job.video))
+        .filter(Job.id == job_id)
+        .one_or_none()
+    )
 
 
 def get_job_by_idempotency_key(db: Session, user_id, idempotency_key: str) -> Job | None:
     return (
         db.query(Job)
+        .options(joinedload(Job.video))
         .filter(Job.user_id == user_id, Job.idempotency_key == idempotency_key)
         .one_or_none()
     )
@@ -64,6 +70,7 @@ def create_job_safe(db: Session, job: Job) -> Job:
 def list_jobs_for_user(db: Session, user_id, limit: int = 50, offset: int = 0) -> list[Job]:
     return (
         db.query(Job)
+        .options(joinedload(Job.video))
         .filter(Job.user_id == user_id)
         .order_by(desc(Job.requested_at))
         .offset(offset)
@@ -82,14 +89,11 @@ def update_job_fields(db: Session, job: Job, **fields: Any) -> Job:
 
     Cancel safety:
     - If job is already CANCELED, do NOT allow overwriting status away from CANCELED.
-    - Also block stage/progress updates once canceled (workers should stop “moving” it).
+    - Also block stage/progress updates once canceled.
     """
     if (job.status or "").upper() == JobStatus.CANCELED.value:
-        # never allow status to be changed away from CANCELED
         if "status" in fields and (fields["status"] or "").upper() != JobStatus.CANCELED.value:
             fields.pop("status", None)
-
-        # do not allow stage/progress updates once canceled
         fields.pop("stage", None)
         fields.pop("progress", None)
 
@@ -102,16 +106,19 @@ def update_job_fields(db: Session, job: Job, **fields: Any) -> Job:
     return job
 
 
+def delete_job(db: Session, job: Job) -> None:
+    """
+    Delete a job row. If your DB schema uses cascading foreign keys, dependent rows
+    will be removed automatically. Otherwise this may raise an IntegrityError and
+    the caller should handle/translate it.
+    """
+    db.delete(job)
+    db.commit()
+
+
 def get_job_for_update(db: Session, job_id) -> Job | None:
-    """
-    Load a job and lock it for update (prevents races).
-    """
     return db.query(Job).filter(Job.id == job_id).with_for_update().one_or_none()
 
 
 def now_utc() -> datetime:
     return datetime.utcnow()
-
-def delete_job(db: Session, job: Job) -> None:
-    db.delete(job)
-    db.commit()

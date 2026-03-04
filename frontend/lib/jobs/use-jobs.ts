@@ -9,39 +9,24 @@ export type Job = {
   id: string;
   status: string;
   created_at?: string;
-  youtube_url?: string;
+  youtube_url?: string | null;
   title?: string | null;
 };
 
-type JobsApiResponse =
-  | Job[]
-  | {
-      items: Job[];
-      total?: number;
-      limit?: number;
-      offset?: number;
-    };
-
-function normalizeJobs(data: JobsApiResponse): Job[] {
-  if (Array.isArray(data)) return data;
-
-  if (data && typeof data === "object") {
-    const items = (data as any).items;
-    if (Array.isArray(items)) return items as Job[];
-  }
-
-  return [];
-}
+type JobListResponse = {
+  items: Job[];
+  total: number;
+};
 
 export function useJobs() {
   return useQuery<Job[]>({
     queryKey: qk.jobs.list(),
     queryFn: async () => {
-      const res = await api.get<JobsApiResponse>(routes.jobs.list());
-      return normalizeJobs(res);
+      const res = await api.get<JobListResponse>(routes.jobs.list());
+      return Array.isArray(res.items) ? res.items : [];
     },
-    staleTime: 1000 * 15,
-    retry: 1,
+    staleTime: 10_000,
     refetchOnWindowFocus: false,
+    retry: 1,
   });
 }

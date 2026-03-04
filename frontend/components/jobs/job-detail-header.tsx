@@ -2,31 +2,53 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { Copy } from "lucide-react";
 
 import { useJob } from "@/lib/jobs/use-job";
 import { useJobProgress } from "@/lib/jobs/use-job-progress";
-import { useCancelJob } from "@/lib/jobs/use-cancel-job";
-import { useDeleteJob } from "@/lib/jobs/use-delete-job";
 
 import { JobProgressStatus } from "@/components/jobs/job-progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { JobActionsMenu } from "@/components/jobs/job-actions-menu";
 
-function isTerminal(status: string | undefined) {
-  const s = (status ?? "").toLowerCase();
-  return ["completed", "failed", "error", "cancelled", "canceled"].includes(s);
+async function copyToClipboard(text: string) {
+  await navigator.clipboard.writeText(text);
+}
+
+function parseYouTubeId(url?: string | null) {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    if (u.hostname.includes("youtube.com")) return u.searchParams.get("v");
+    if (u.hostname === "youtu.be") return u.pathname.replace("/", "") || null;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function displayTitle(title?: string | null, youtubeUrl?: string | null) {
+  const t = title?.trim();
+  if (t) return t;
+
+  const vid = parseYouTubeId(youtubeUrl ?? null);
+  if (vid) return `YouTube • ${vid}`;
+
+  return "Untitled video";
+}
+
+function displayUrlLabel(youtubeUrl?: string | null) {
+  const vid = parseYouTubeId(youtubeUrl ?? null);
+  if (!youtubeUrl) return null;
+  if (!vid) return youtubeUrl;
+  return `youtube.com • ${vid}`;
 }
 
 export function JobDetailHeader({ jobId }: { jobId: string }) {
-  const router = useRouter();
-
   const job = useJob(jobId);
   const progress = useJobProgress(jobId);
-
-  const cancel = useCancelJob(jobId);
-  const del = useDeleteJob(jobId);
 
   if (job.isLoading) {
     return (
@@ -66,69 +88,71 @@ export function JobDetailHeader({ jobId }: { jobId: string }) {
   const stage = progress.data?.stage ?? undefined;
   const message = progress.data?.message ?? undefined;
 
-  const title = job.data.title?.trim() ? job.data.title : "Job";
+  const youtubeUrl = job.data.youtube_url ?? null;
+  const title = displayTitle(job.data.title ?? null, youtubeUrl);
+  const urlLabel = displayUrlLabel(youtubeUrl);
 
-  const terminal = isTerminal(status);
-  const canCancel = !terminal && !cancel.isPending && !del.isPending;
-  const canDelete = !del.isPending && !cancel.isPending;
-
-  async function onCancel() {
-    const ok = window.confirm(
-      "Cancel this job? It will stop progressing and be marked as canceled."
-    );
-    if (!ok) return;
-
+  async function onCopyId() {
     try {
-      await cancel.mutateAsync();
-      toast.success("Job canceled");
+      await copyToClipboard(job.data!.id);
+      toast.success("Copied job ID");
     } catch {
-      toast.error("Failed to cancel job");
-    }
-  }
-
-  async function onDelete() {
-    const ok = window.confirm(
-      "Delete this job permanently? This cannot be undone."
-    );
-    if (!ok) return;
-
-    try {
-      await del.mutateAsync();
-      toast.success("Job deleted");
-      router.push("/jobs");
-    } catch {
-      toast.error("Failed to delete job");
+      toast.error("Copy failed");
     }
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="text-xl font-semibold">
-            {title}{" "}
-            <span className="text-muted-foreground">#{job.data.id}</span>
-          </h1>
-          {job.data.youtube_url ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-xl font-semibold leading-tight">{title}</h1>
+
+            <span className="text-xs text-muted-foreground font-mono">
+              #{job.data.id}
+            </span>
+
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={onCopyId}
+              aria-label="Copy job ID"
+            >
+              <Copy className="h-4 w-4" />
+            </Button>
+          </div>
+
+          {youtubeUrl ? (
             <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
               <a
-                href={job.data.youtube_url}
+                href={youtubeUrl}
                 target="_blank"
                 rel="noreferrer"
                 className="truncate text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
+                title={youtubeUrl}
               >
-                {job.data.youtube_url}
+                {urlLabel ?? youtubeUrl}
               </a>
             </div>
           ) : null}
         </div>
 
-        <div className="w-full max-w-sm">
-          <JobProgressStatus
+        <div className="flex w-full max-w-sm items-start justify-end gap-2">
+          <div className="flex-1">
+            <JobProgressStatus
+              status={status}
+              percent={percent}
+              stage={stage}
+              message={message}
+            />
+          </div>
+
+          <JobActionsMenu
+            jobId={jobId}
             status={status}
-            percent={percent}
-            stage={stage}
-            message={message}
+            youtubeUrl={youtubeUrl ?? undefined}
+            variant="secondary"
           />
         </div>
       </div>
@@ -138,33 +162,13 @@ export function JobDetailHeader({ jobId }: { jobId: string }) {
           <Link href="/jobs">All jobs</Link>
         </Button>
 
-        {job.data.youtube_url ? (
+        {youtubeUrl ? (
           <Button asChild variant="outline" size="sm">
-            <a href={job.data.youtube_url} target="_blank" rel="noreferrer">
+            <a href={youtubeUrl} target="_blank" rel="noreferrer">
               Open on YouTube
             </a>
           </Button>
         ) : null}
-
-        {!terminal ? (
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={onCancel}
-            disabled={!canCancel}
-          >
-            {cancel.isPending ? "Canceling…" : "Cancel job"}
-          </Button>
-        ) : null}
-
-        <Button
-          variant="destructive"
-          size="sm"
-          onClick={onDelete}
-          disabled={!canDelete}
-        >
-          {del.isPending ? "Deleting…" : "Delete job"}
-        </Button>
       </div>
     </div>
   );
