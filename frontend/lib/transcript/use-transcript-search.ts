@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 import { routes } from "@/lib/api/routes";
+import { qk } from "@/lib/query/keys";
 
 export type TranscriptSearchHit = {
   idx: number;
@@ -28,16 +29,20 @@ function normalizeHits(res: SearchApiResponse): TranscriptSearchHit[] {
 }
 
 export function useTranscriptSearch(jobId: string, q: string) {
+  const trimmed = q.trim();
+
   return useQuery<TranscriptSearchHit[]>({
-    queryKey: ["transcript-search", jobId, q],
-    enabled: Boolean(jobId) && q.trim().length >= 2,
+    queryKey: qk.jobs.transcriptSearch(jobId, trimmed),
+    enabled: Boolean(jobId) && trimmed.length >= 2,
     queryFn: async () => {
       const url = `${routes.jobs.transcriptSearch(
         jobId
-      )}?q=${encodeURIComponent(q)}&limit=50&offset=0`;
+      )}?q=${encodeURIComponent(trimmed)}&limit=50&offset=0`;
       const res = await api.get<SearchApiResponse>(url);
       return normalizeHits(res);
     },
+    // keep results stable while typing (less flicker)
+    placeholderData: (prev) => prev ?? [],
     staleTime: 5_000,
     refetchOnWindowFocus: false,
     retry: 1,

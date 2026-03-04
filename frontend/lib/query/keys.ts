@@ -8,5 +8,7 @@ export const qk = {
     progress: (jobId: string) => ["jobs", "progress", jobId] as const,
     results: (jobId: string) => ["jobs", "results", jobId] as const,
     transcript: (jobId: string) => ["jobs", "transcript", jobId] as const,
+    transcriptSearch: (jobId: string, q: string) =>
+      ["jobs", "transcriptSearch", jobId, q] as const,
   },
 } as const;
