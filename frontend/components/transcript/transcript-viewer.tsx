@@ -17,6 +17,16 @@ export function TranscriptViewer({
 }) {
   const parentRef = React.useRef<HTMLDivElement | null>(null);
 
+  const idxToArrayIndex = React.useMemo(() => {
+    const m = new Map<number, number>();
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i];
+      if (!seg) continue;
+      m.set(seg.idx, i);
+    }
+    return m;
+  }, [segments]);
+
   const rowVirtualizer = useVirtualizer({
     count: segments.length,
     getScrollElement: () => parentRef.current,
@@ -29,12 +39,16 @@ export function TranscriptViewer({
 
   React.useEffect(() => {
     if (activeIdx == null) return;
-    rowVirtualizer.scrollToIndex(activeIdx, { align: "center" });
+
+    const arrayIndex = idxToArrayIndex.get(activeIdx);
+    if (arrayIndex == null) return;
+
+    rowVirtualizer.scrollToIndex(arrayIndex, { align: "center" });
 
     setPulseIdx(activeIdx);
-    const t = setTimeout(() => setPulseIdx(null), 1500);
-    return () => clearTimeout(t);
-  }, [activeIdx, rowVirtualizer]);
+    const t = window.setTimeout(() => setPulseIdx(null), 1500);
+    return () => window.clearTimeout(t);
+  }, [activeIdx, idxToArrayIndex, rowVirtualizer]);
 
   return (
     <div
@@ -56,16 +70,16 @@ export function TranscriptViewer({
           const isPulsing = pulseIdx === seg.idx;
 
           return (
-            <div
+            <button
               key={v.key}
+              type="button"
               className={cn(
-                "absolute left-0 top-0 w-full border-b px-4 py-3 text-sm transition-colors",
+                "absolute left-0 top-0 w-full border-b px-4 py-3 text-left text-sm transition-colors",
                 isActive ? "bg-accent/50" : "bg-background",
-                isPulsing ? "animate-pulse" : ""
+                isPulsing ? "animate-pulse" : "",
+                "hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               )}
-              style={{
-                transform: `translateY(${v.start}px)`,
-              }}
+              style={{ transform: `translateY(${v.start}px)` }}
               onClick={() => onJumpToIdx?.(seg.idx)}
             >
               <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
@@ -75,7 +89,7 @@ export function TranscriptViewer({
                 <span>#{seg.idx}</span>
               </div>
               <div className="leading-6">{seg.text}</div>
-            </div>
+            </button>
           );
         })}
       </div>
