@@ -28,6 +28,7 @@ from app.schemas.ask_video import AskVideoRequest, AskVideoResponse, AskVideoCit
 from app.services.ask_video_service import ask_video
 from app.db.repositories.chat import get_chat_session, list_messages
 from fastapi.responses import JSONResponse
+from app.db.repositories.jobs import count_jobs_for_user, get_job, list_jobs_for_user, update_job_fields
 
 router = APIRouter(tags=["Jobs"])
 
@@ -297,3 +298,88 @@ def get_chat_history(
             for m in msgs
         ],
     }
+
+@router.post("/jobs", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
+def create_job(
+    payload: JobCreateRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> JobResponse:
+    rate_limit_or_429(
+        scope="jobs:create",
+        identity=str(user.id),
+        limit=settings.rate_limit_jobs_per_minute,
+        window_seconds=60,
+    )
+    try:
+        job = create_or_get_job_for_youtube(
+            db,
+            user_id=user.id,
+            youtube_url=payload.youtube_url,
+            params=payload.params,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    celery_app.send_task(
+        "app.workers.tasks.process_job.process_job",
+        args=[str(job.id)],
+    )
+
+    return JobResponse.model_validate(job)
+
+
+@router.post("/jobs/{job_id}/cancel", response_model=JobResponse, status_code=status.HTTP_200_OK)
+def cancel_job(
+    job_id: UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> JobResponse:
+    """
+    Cancel an in-progress job.
+    This is a *soft cancel*: it marks the job CANCELED and prevents future status/progress updates.
+    """
+    job = get_job(db, job_id)
+    if job is None or job.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    s = (job.status or "").upper()
+    if s in {JobStatus.COMPLETED.value, JobStatus.FAILED.value, JobStatus.CANCELED.value}:
+        raise HTTPException(status_code=409, detail=f"Job is already terminal: {job.status}")
+
+    update_job_fields(
+        db,
+        job,
+        status=JobStatus.CANCELED.value,
+        stage="canceled",
+        progress=job.progress,
+        completed_at=job.completed_at or None,  # keep as-is
+        error_code="CANCELED",
+        error_message="Canceled by user",
+    )
+
+    return JobResponse.model_validate(job)
+
+
+@router.get("/jobs/{job_id}", response_model=JobResponse)
+def get_job_route(
+    job_id: UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> JobResponse:
+    job = get_job(db, job_id)
+    if job is None or job.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return JobResponse.model_validate(job)
+
+
+@router.get("/jobs", response_model=JobListResponse)
+def list_jobs(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+) -> JobListResponse:
+    jobs = list_jobs_for_user(db, user_id=user.id, limit=limit, offset=offset)
+    total = count_jobs_for_user(db, user_id=user.id)
+    return JobListResponse(items=[JobResponse.model_validate(j) for j in jobs], total=total)
