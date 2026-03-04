@@ -10,5 +10,9 @@ export const qk = {
     transcript: (jobId: string) => ["jobs", "transcript", jobId] as const,
     transcriptSearch: (jobId: string, q: string) =>
       ["jobs", "transcriptSearch", jobId, q] as const,
+
+    chatSessions: (jobId: string) => ["jobs", "chatSessions", jobId] as const,
+    chatHistory: (jobId: string, sessionId: string) =>
+      ["jobs", "chatHistory", jobId, sessionId] as const,
   },
 } as const;

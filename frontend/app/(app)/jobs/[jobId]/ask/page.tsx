@@ -3,11 +3,31 @@
 import * as React from "react";
 import { useParams } from "next/navigation";
 import { nanoid } from "nanoid";
+import { PanelLeft } from "lucide-react";
+import { toast } from "sonner";
+
 import { useAsk } from "@/lib/ask/use-ask";
+import { useChatHistory } from "@/lib/ask/use-chat-history";
+import {
+  useChatSessions,
+  type StoredChatSession,
+} from "@/lib/ask/use-chat-sessions";
+import {
+  readActiveSessionLocalId,
+  readMessagesByLocalId,
+  writeActiveSessionLocalId,
+  writeMessagesByLocalId,
+} from "@/lib/ask/chat-local-storage";
+
+import {
+  SessionsPanel,
+  type AskSessionListItem,
+} from "@/components/ask/sessions-panel";
 import {
   ChatMessageBubble,
   type ChatMessage,
 } from "@/components/ask/chat-message";
+
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,20 +38,8 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import {
-  SessionsPanel,
-  type AskLocalSession,
-} from "@/components/ask/sessions-panel";
-import { PanelLeft } from "lucide-react";
 
-type SessionState = {
-  localId: string; // UI session id
-  title: string;
-  backendSessionId: string | null;
-  messages: ChatMessage[];
-};
-
-function makeInitialAssistantMessage(text: string): ChatMessage {
+function makeAssistant(text: string): ChatMessage {
   return {
     id: nanoid(),
     role: "assistant",
@@ -40,65 +48,155 @@ function makeInitialAssistantMessage(text: string): ChatMessage {
   };
 }
 
+function mapHistoryToChatMessages(
+  history: {
+    id: string;
+    role: "user" | "assistant";
+    content: string;
+    citations?: unknown[] | null;
+    created_at: string;
+  }[]
+): ChatMessage[] {
+  return history.map((m) => ({
+    id: String(m.id),
+    role: m.role,
+    content: m.content,
+    createdAt: Number.isFinite(Date.parse(m.created_at))
+      ? Date.parse(m.created_at)
+      : Date.now(),
+    citations: m.citations ?? undefined,
+  }));
+}
+
+function makeNewLocalSession(): StoredChatSession {
+  return {
+    local_id: nanoid(),
+    title: "New chat",
+    session_id: null,
+    last_used_at: Date.now(),
+  };
+}
+
 export default function AskPage() {
   const { jobId } = useParams<{ jobId: string }>();
-  const ask = useAsk(jobId);
 
+  const ask = useAsk(jobId);
+  const chatSessions = useChatSessions(jobId);
+
+  // Ensure at least one session exists
+  React.useEffect(() => {
+    chatSessions.ensureAtLeastOne(makeNewLocalSession);
+  }, [chatSessions]);
+
+  const sessions = chatSessions.sessions;
+
+  // Restore active session from localStorage (per job)
+  const [activeLocalId, setActiveLocalId] = React.useState<string | null>(() =>
+    readActiveSessionLocalId(jobId)
+  );
+
+  // Restore messages cache from localStorage (per job)
+  const [localMessagesByLocalId, setLocalMessagesByLocalId] = React.useState<
+    Record<string, ChatMessage[]>
+  >(() => readMessagesByLocalId(jobId));
+
+  const [mobileOpen, setMobileOpen] = React.useState(false);
   const [input, setInput] = React.useState("");
 
-  // Local sessions (FE-19 will replace with API-backed sessions)
-  const [sessions, setSessions] = React.useState<SessionState[]>(() => {
-    const firstId = nanoid();
-    return [
-      {
-        localId: firstId,
-        title: "New chat",
-        backendSessionId: null,
-        messages: [
-          makeInitialAssistantMessage(
-            "Ask me anything about this video. I’ll cite the transcript when possible."
-          ),
-        ],
-      },
-    ];
-  });
+  // If active session is missing, default to the first session once loaded
+  React.useEffect(() => {
+    if (!sessions.length) return;
 
-  const [activeLocalId, setActiveLocalId] = React.useState<string>(
-    () => sessions[0]!.localId
-  );
-  const [mobileOpen, setMobileOpen] = React.useState(false);
+    setActiveLocalId((prev) => {
+      if (prev && sessions.some((s) => s.local_id === prev)) return prev;
+      return sessions[0]!.local_id;
+    });
+  }, [sessions]);
+
+  // Persist active session choice
+  React.useEffect(() => {
+    if (!activeLocalId) return;
+    writeActiveSessionLocalId(jobId, activeLocalId);
+  }, [jobId, activeLocalId]);
+
+  // Persist messages (small payloads in dev; still fine for prod MVP)
+  React.useEffect(() => {
+    writeMessagesByLocalId(jobId, localMessagesByLocalId);
+  }, [jobId, localMessagesByLocalId]);
 
   const activeSession = React.useMemo(() => {
-    return sessions.find((s) => s.localId === activeLocalId) ?? sessions[0]!;
+    if (!activeLocalId) return null;
+    return sessions.find((s) => s.local_id === activeLocalId) ?? null;
   }, [sessions, activeLocalId]);
 
-  const canSend = input.trim().length > 0 && !ask.isPending;
+  const activeMessages: ChatMessage[] =
+    (activeSession && localMessagesByLocalId[activeSession.local_id]) ?? [];
 
-  function setActiveSessionById(id: string) {
-    setActiveLocalId(id);
+  // Load backend history for synced sessions
+  const historyQuery = useChatHistory(jobId, activeSession?.session_id ?? null);
+
+  // When history loads for a synced session, overwrite local cache for that session
+  React.useEffect(() => {
+    if (!activeSession?.session_id) return;
+    if (!historyQuery.data) return;
+
+    const mapped = mapHistoryToChatMessages(historyQuery.data.messages);
+
+    setLocalMessagesByLocalId((prev) => ({
+      ...prev,
+      [activeSession.local_id]: mapped,
+    }));
+  }, [activeSession?.session_id, activeSession?.local_id, historyQuery.data]);
+
+  // Seed welcome message ONLY for unsynced sessions (and only if empty)
+  React.useEffect(() => {
+    if (!activeSession) return;
+    if (activeSession.session_id) return;
+
+    const existing = localMessagesByLocalId[activeSession.local_id];
+    if (existing && existing.length > 0) return;
+
+    setLocalMessagesByLocalId((prev) => ({
+      ...prev,
+      [activeSession.local_id]: [
+        makeAssistant(
+          "Ask me anything about this video. I’ll cite the transcript when possible."
+        ),
+      ],
+    }));
+  }, [
+    activeSession?.local_id,
+    activeSession?.session_id,
+    activeSession,
+    localMessagesByLocalId,
+  ]);
+
+  const canSend =
+    Boolean(activeSession) && input.trim().length > 0 && !ask.isPending;
+
+  function onSelectSession(localId: string) {
+    setActiveLocalId(localId);
     setMobileOpen(false);
+    chatSessions.touchSession(localId);
   }
 
   function onNewSession() {
-    const id = nanoid();
-    const next: SessionState = {
-      localId: id,
-      title: "New chat",
-      backendSessionId: null,
-      messages: [
-        makeInitialAssistantMessage(
-          "New chat started. Ask me anything about this video."
-        ),
-      ],
-    };
-    setSessions((prev) => [next, ...prev]);
-    setActiveLocalId(id);
+    const s = makeNewLocalSession();
+    chatSessions.createSession(s);
+    setActiveLocalId(s.local_id);
     setMobileOpen(false);
     setInput("");
+
+    setLocalMessagesByLocalId((prev) => ({
+      ...prev,
+      [s.local_id]: [
+        makeAssistant("New chat started. Ask me anything about this video."),
+      ],
+    }));
   }
 
   async function onSend() {
-    if (!canSend) return;
+    if (!activeSession || !canSend) return;
 
     const question = input.trim();
     setInput("");
@@ -110,25 +208,32 @@ export default function AskPage() {
       createdAt: Date.now(),
     };
 
-    // Add user message to active session
-    setSessions((prev) =>
-      prev.map((s) =>
-        s.localId === activeSession.localId
-          ? {
-              ...s,
-              messages: [...s.messages, userMsg],
-              title: s.title === "New chat" ? question.slice(0, 32) : s.title,
-            }
-          : s
-      )
-    );
+    setLocalMessagesByLocalId((prev) => ({
+      ...prev,
+      [activeSession.local_id]: [
+        ...(prev[activeSession.local_id] ?? []),
+        userMsg,
+      ],
+    }));
+
+    if (activeSession.title === "New chat") {
+      chatSessions.renameSession(activeSession.local_id, question.slice(0, 42));
+    }
+    chatSessions.touchSession(activeSession.local_id);
 
     try {
       const res = await ask.mutateAsync({
         question,
-        session_id: activeSession.backendSessionId,
+        session_id: activeSession.session_id,
         top_k: 5,
       });
+
+      if (!activeSession.session_id) {
+        chatSessions.attachBackendSessionId(
+          activeSession.local_id,
+          res.session_id
+        );
+      }
 
       const assistantMsg: ChatMessage = {
         id: nanoid(),
@@ -138,18 +243,13 @@ export default function AskPage() {
         citations: res.citations ?? [],
       };
 
-      // Apply backend session_id + assistant message
-      setSessions((prev) =>
-        prev.map((s) =>
-          s.localId === activeSession.localId
-            ? {
-                ...s,
-                backendSessionId: res.session_id,
-                messages: [...s.messages, assistantMsg],
-              }
-            : s
-        )
-      );
+      setLocalMessagesByLocalId((prev) => ({
+        ...prev,
+        [activeSession.local_id]: [
+          ...(prev[activeSession.local_id] ?? []),
+          assistantMsg,
+        ],
+      }));
     } catch (e: unknown) {
       const message =
         e &&
@@ -159,60 +259,57 @@ export default function AskPage() {
           ? (e as any).message
           : "Something went wrong.";
 
-      setSessions((prev) =>
-        prev.map((s) =>
-          s.localId === activeSession.localId
-            ? {
-                ...s,
-                messages: [
-                  ...s.messages,
-                  makeInitialAssistantMessage(`Error: ${message}`),
-                ],
-              }
-            : s
-        )
-      );
+      setLocalMessagesByLocalId((prev) => ({
+        ...prev,
+        [activeSession.local_id]: [
+          ...(prev[activeSession.local_id] ?? []),
+          makeAssistant(`Error: ${message}`),
+        ],
+      }));
+      toast.error("Message failed");
     }
   }
 
-  function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+  function onComposerKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       onSend();
     }
   }
 
-  const sessionsForPanel: AskLocalSession[] = sessions.map((s) => ({
-    id: s.localId,
+  const sessionsForPanel: AskSessionListItem[] = sessions.map((s) => ({
+    localId: s.local_id,
     title: s.title,
+    hasBackendSession: Boolean(s.session_id),
   }));
 
-  // Scroll chat to bottom as messages arrive (simple + reliable)
+  // Scroll to bottom on changes
   const chatRef = React.useRef<HTMLDivElement | null>(null);
   React.useEffect(() => {
     const el = chatRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, [activeSession.messages.length]);
+  }, [activeMessages.length, activeLocalId]);
+
+  const showHistoryLoading =
+    Boolean(activeSession?.session_id) &&
+    (historyQuery.isLoading || historyQuery.isFetching) &&
+    activeMessages.length === 0;
 
   return (
     <div className="grid h-[calc(100vh-180px)] gap-4 lg:grid-cols-[300px_1fr]">
-      {/* Desktop sessions panel */}
       <div className="hidden overflow-hidden rounded-lg border lg:block">
         <SessionsPanel
           sessions={sessionsForPanel}
-          activeSessionId={activeLocalId}
-          onSelectSession={setActiveSessionById}
+          activeSessionLocalId={activeLocalId ?? ""}
+          onSelectSession={onSelectSession}
           onNewSession={onNewSession}
         />
       </div>
 
-      {/* Main chat column */}
       <div className="flex min-h-0 flex-col gap-3">
-        {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            {/* Mobile sessions */}
             <div className="lg:hidden">
               <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
                 <SheetTrigger asChild>
@@ -227,8 +324,8 @@ export default function AskPage() {
                   </SheetHeader>
                   <SessionsPanel
                     sessions={sessionsForPanel}
-                    activeSessionId={activeLocalId}
-                    onSelectSession={setActiveSessionById}
+                    activeSessionLocalId={activeLocalId ?? ""}
+                    onSelectSession={onSelectSession}
                     onNewSession={onNewSession}
                     className="h-[calc(100vh-80px)]"
                   />
@@ -237,9 +334,11 @@ export default function AskPage() {
             </div>
 
             <div className="text-sm font-medium">Ask the video</div>
-            <div className="text-xs text-muted-foreground">
-              {activeSession.title}
-            </div>
+            {activeSession ? (
+              <div className="text-xs text-muted-foreground">
+                {activeSession.title}
+              </div>
+            ) : null}
           </div>
 
           <Button variant="secondary" size="sm" onClick={onNewSession}>
@@ -247,35 +346,50 @@ export default function AskPage() {
           </Button>
         </div>
 
-        {/* Chat thread */}
         <div
           ref={chatRef}
           className="flex-1 space-y-3 overflow-auto rounded-lg border p-4"
         >
-          {activeSession.messages.map((msg) => (
-            <ChatMessageBubble key={msg.id} jobId={jobId} msg={msg} />
-          ))}
+          {!activeSession ? (
+            <div className="text-sm text-muted-foreground">
+              Loading sessions…
+            </div>
+          ) : showHistoryLoading ? (
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-4 w-56" />
+              <Skeleton className="h-4 w-40" />
+            </div>
+          ) : activeMessages.length === 0 && activeSession.session_id ? (
+            <div className="text-sm text-muted-foreground">
+              No messages found for this session.
+            </div>
+          ) : (
+            activeMessages.map((msg) => (
+              <ChatMessageBubble key={msg.id} jobId={jobId} msg={msg} />
+            ))
+          )}
 
           {ask.isPending ? (
             <div className="text-xs text-muted-foreground">Thinking…</div>
           ) : null}
         </div>
 
-        {/* Composer */}
         <div className="rounded-lg border p-3">
           <Textarea
             placeholder="Ask a question… (Enter to send, Shift+Enter for newline)"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={onKeyDown}
+            onKeyDown={onComposerKeyDown}
             rows={3}
+            disabled={!activeSession}
           />
 
           <div className="mt-2 flex justify-end gap-2">
             <Button
               variant="secondary"
               onClick={() => setInput("")}
-              disabled={!input.trim()}
+              disabled={!input.trim() || !activeSession}
             >
               Clear
             </Button>
@@ -283,12 +397,6 @@ export default function AskPage() {
               Send
             </Button>
           </div>
-
-          {ask.isPending ? (
-            <div className="mt-2">
-              <Skeleton className="h-4 w-36" />
-            </div>
-          ) : null}
         </div>
       </div>
     </div>
