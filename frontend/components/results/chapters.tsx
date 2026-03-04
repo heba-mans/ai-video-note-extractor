@@ -22,14 +22,21 @@ export function ChaptersSection({
       <div className="space-y-4">
         {chapters.map((c, idx) => {
           const title = c.title?.trim() ? c.title : `Chapter ${idx + 1}`;
-          const canJump =
-            Boolean(jobId) &&
-            typeof c.start_seconds === "number" &&
-            c.start_seconds >= 0;
+          const hasStart =
+            typeof c.start_seconds === "number" && c.start_seconds >= 0;
+          const hasEnd =
+            typeof c.end_seconds === "number" && c.end_seconds >= 0 && hasStart;
 
-          const href = canJump
-            ? `/jobs/${jobId}/transcript?ts=${Math.floor(c.start_seconds!)}`
-            : null;
+          const href =
+            jobId && hasStart
+              ? hasEnd
+                ? `/jobs/${jobId}/transcript?range=${Math.floor(
+                    c.start_seconds!
+                  )}-${Math.floor(c.end_seconds!)}&ts=${Math.floor(
+                    c.start_seconds!
+                  )}`
+                : `/jobs/${jobId}/transcript?ts=${Math.floor(c.start_seconds!)}`
+              : null;
 
           return (
             <div key={`${idx}-${title}`} className="space-y-2">
