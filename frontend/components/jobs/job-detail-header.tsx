@@ -7,10 +7,26 @@ import { useJobProgress } from "@/lib/jobs/use-job-progress";
 import { JobProgressStatus } from "@/components/jobs/job-progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { useCancelJob } from "@/lib/jobs/use-cancel-job";
+import { toast } from "sonner";
+
+function isTerminal(status: string | undefined) {
+  const s = (status ?? "").toLowerCase();
+  return [
+    "completed",
+    "failed",
+    "error",
+    "cancelled",
+    "canceled",
+    "canceled",
+    "canceled",
+  ].includes(s);
+}
 
 export function JobDetailHeader({ jobId }: { jobId: string }) {
   const job = useJob(jobId);
   const progress = useJobProgress(jobId);
+  const cancel = useCancelJob(jobId);
 
   if (job.isLoading) {
     return (
@@ -52,6 +68,22 @@ export function JobDetailHeader({ jobId }: { jobId: string }) {
 
   const title = job.data.title?.trim() ? job.data.title : "Job";
 
+  const canCancel = !isTerminal(status) && !cancel.isPending;
+
+  async function onCancel() {
+    const ok = window.confirm(
+      "Cancel this job? It will stop progressing and be marked as canceled."
+    );
+    if (!ok) return;
+
+    try {
+      await cancel.mutateAsync();
+      toast.success("Job canceled");
+    } catch (e) {
+      toast.error("Failed to cancel job");
+    }
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex items-start justify-between gap-4">
@@ -88,11 +120,23 @@ export function JobDetailHeader({ jobId }: { jobId: string }) {
         <Button asChild variant="secondary" size="sm">
           <Link href="/jobs">All jobs</Link>
         </Button>
+
         {job.data.youtube_url ? (
           <Button asChild variant="outline" size="sm">
             <a href={job.data.youtube_url} target="_blank" rel="noreferrer">
               Open on YouTube
             </a>
+          </Button>
+        ) : null}
+
+        {!isTerminal(status) ? (
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={onCancel}
+            disabled={!canCancel}
+          >
+            {cancel.isPending ? "Canceling…" : "Cancel job"}
           </Button>
         ) : null}
       </div>

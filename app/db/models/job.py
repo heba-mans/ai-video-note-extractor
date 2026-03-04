@@ -16,6 +16,7 @@ class JobStatus(str, Enum):
     SUMMARIZING = "SUMMARIZING"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
+    CANCELED = "CANCELED"
 
 
 class Job(Base):
@@ -63,9 +64,6 @@ class Job(Base):
     # Retry tracking
     retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
-    # Worker heartbeat for "stuck job" detection
-    last_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-
-    # Relationships (optional now; useful later)
-    user = relationship("User", lazy="selectin")
-    video = relationship("Video", lazy="selectin")
+    # Relationships
+    user = relationship("User", back_populates="jobs")
+    video = relationship("Video", back_populates="jobs")

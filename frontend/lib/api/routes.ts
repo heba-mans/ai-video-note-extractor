@@ -19,5 +19,6 @@ export const routes = {
     ask: (jobId: string) => `/api/jobs/${jobId}/ask`,
     chatHistory: (jobId: string, sessionId: string) =>
       `/api/jobs/${jobId}/chat/${sessionId}`,
+    cancel: (jobId: string) => `${API}/jobs/${jobId}/cancel`,
   },
 } as const;

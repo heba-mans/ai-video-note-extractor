@@ -1,12 +1,13 @@
-from sqlalchemy.orm import Session
-
-from app.db.models.job import Job, JobStatus
-from sqlalchemy.exc import IntegrityError
-
-from sqlalchemy import desc
+from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
+
+from sqlalchemy import desc
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from app.db.models.job import Job, JobStatus
 
 
 def create_job(
@@ -33,6 +34,7 @@ def create_job(
 def get_job(db: Session, job_id) -> Job | None:
     return db.query(Job).filter(Job.id == job_id).one_or_none()
 
+
 def get_job_by_idempotency_key(db: Session, user_id, idempotency_key: str) -> Job | None:
     return (
         db.query(Job)
@@ -44,7 +46,7 @@ def get_job_by_idempotency_key(db: Session, user_id, idempotency_key: str) -> Jo
 def create_job_safe(db: Session, job: Job) -> Job:
     """
     Create a job safely under concurrency.
-    If unique constraint is violated, return the existing row.
+    If the unique constraint is violated, return the existing row.
     """
     try:
         db.add(job)
@@ -57,7 +59,8 @@ def create_job_safe(db: Session, job: Job) -> Job:
         if existing is None:
             raise
         return existing
-    
+
+
 def list_jobs_for_user(db: Session, user_id, limit: int = 50, offset: int = 0) -> list[Job]:
     return (
         db.query(Job)
@@ -72,12 +75,27 @@ def list_jobs_for_user(db: Session, user_id, limit: int = 50, offset: int = 0) -
 def count_jobs_for_user(db: Session, user_id) -> int:
     return db.query(Job).filter(Job.user_id == user_id).count()
 
+
 def update_job_fields(db: Session, job: Job, **fields: Any) -> Job:
     """
     Update a job with given fields and commit.
+
+    Cancel safety:
+    - If job is already CANCELED, do NOT allow overwriting status away from CANCELED.
+    - Also block stage/progress updates once canceled (workers should stop “moving” it).
     """
+    if (job.status or "").upper() == JobStatus.CANCELED.value:
+        # never allow status to be changed away from CANCELED
+        if "status" in fields and (fields["status"] or "").upper() != JobStatus.CANCELED.value:
+            fields.pop("status", None)
+
+        # do not allow stage/progress updates once canceled
+        fields.pop("stage", None)
+        fields.pop("progress", None)
+
     for k, v in fields.items():
         setattr(job, k, v)
+
     db.add(job)
     db.commit()
     db.refresh(job)
@@ -92,5 +110,4 @@ def get_job_for_update(db: Session, job_id) -> Job | None:
 
 
 def now_utc() -> datetime:
-    # DB timestamps are server-side too, but this is fine for app-level fields.
     return datetime.utcnow()
