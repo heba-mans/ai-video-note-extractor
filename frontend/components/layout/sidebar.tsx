@@ -21,7 +21,7 @@ export function Sidebar() {
       <div className="flex-1 space-y-1 px-2 py-3">
         <NavItem
           href="/jobs"
-          label="Jobs"
+          label="Videos"
           icon={<List className="h-4 w-4" />}
         />
       </div>
@@ -32,7 +32,7 @@ export function Sidebar() {
           className="flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
         >
           <Plus className="h-4 w-4" />
-          New job
+          New video
         </Link>
       </div>
 
