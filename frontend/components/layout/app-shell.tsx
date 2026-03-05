@@ -9,29 +9,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = React.useState(false);
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="flex h-screen overflow-hidden">
-        {/* Desktop sidebar */}
-        <div className="hidden w-64 flex-shrink-0 border-r md:block">
-          <Sidebar />
-        </div>
-
-        {/* Mobile sidebar */}
-        <Sheet open={open} onOpenChange={setOpen}>
-          <SheetContent side="left" className="w-72 p-0">
-            <Sidebar />
-          </SheetContent>
-
-          {/* Main */}
-          <div className="flex flex-1 flex-col">
-            <Topbar
-              onOpenSidebar={() => setOpen(true)}
-              title="AI Video Note Extractor"
-            />
-            <main className="flex-1 overflow-auto p-6">{children}</main>
-          </div>
-        </Sheet>
+    <div className="flex h-dvh w-full">
+      {/* Desktop sidebar */}
+      <div className="hidden w-72 border-r lg:block">
+        <Sidebar />
       </div>
+
+      {/* Mobile sidebar */}
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetContent side="left" className="w-72 p-0">
+          <Sidebar />
+        </SheetContent>
+
+        <div className="flex min-w-0 flex-1 flex-col">
+          <Topbar
+            onOpenSidebar={() => setOpen(true)}
+            title="AI Video Note Extractor"
+          />
+          <main className="min-w-0 flex-1 overflow-auto p-6">{children}</main>
+        </div>
+      </Sheet>
     </div>
   );
 }
