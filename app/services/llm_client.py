@@ -2,10 +2,81 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from typing import Any
 
 import requests
 from openai import OpenAI
+
+
+_LATEX_INLINE_RE = re.compile(r"\\\((.*?)\\\)", re.DOTALL)
+_LATEX_BLOCK_RE = re.compile(r"\\\[(.*?)\\\]", re.DOTALL)
+
+
+def _demote_headings(md: str) -> str:
+    """
+    Convert markdown headings into bold lines to avoid "doc-like" formatting in chat.
+    Example: "### Title" -> "**Title**"
+    """
+    out_lines: list[str] = []
+    for line in (md or "").splitlines():
+        m = re.match(r"^\s{0,3}(#{1,6})\s+(.*)$", line)
+        if m:
+            text = (m.group(2) or "").strip()
+            if text:
+                out_lines.append(f"**{text}**")
+            else:
+                out_lines.append("")
+        else:
+            out_lines.append(line)
+    return "\n".join(out_lines)
+
+
+def _neutralize_latex(md: str) -> str:
+    """
+    Remove LaTeX delimiters and wrap LaTeX-heavy lines in code to avoid ugly rendering.
+    """
+    s = md or ""
+
+    # Strip \(...\) and \[...\] delimiters (keep content)
+    s = _LATEX_INLINE_RE.sub(lambda m: f"`{m.group(1).strip()}`", s)
+    s = _LATEX_BLOCK_RE.sub(lambda m: f"```text\n{m.group(1).strip()}\n```", s)
+
+    out_lines: list[str] = []
+    for line in s.splitlines():
+        l = line.strip()
+
+        # If it contains typical LaTeX commands, render as code line
+        if any(tok in l for tok in ["\\frac", "\\sigma", "\\begin", "\\end", "\\sum", "\\int"]):
+            out_lines.append(f"```text\n{l}\n```")
+        else:
+            out_lines.append(line)
+
+    return "\n".join(out_lines)
+
+
+def _compact_whitespace(md: str) -> str:
+    """
+    Avoid massive vertical whitespace in chat.
+    Keep single blank lines, remove 3+ blank lines.
+    """
+    s = md or ""
+    # Normalize line endings
+    s = s.replace("\r\n", "\n").replace("\r", "\n")
+
+    # Collapse 3+ blank lines to 2
+    while "\n\n\n" in s:
+        s = s.replace("\n\n\n", "\n\n")
+
+    return s.strip()
+
+
+def _postprocess_chat_answer(md: str) -> str:
+    s = md or ""
+    s = _demote_headings(s)
+    s = _neutralize_latex(s)
+    s = _compact_whitespace(s)
+    return s
 
 
 class LLMClient:
@@ -34,10 +105,6 @@ class LLMClient:
         self.client = OpenAI(api_key=api_key)
 
     def _ollama_chat(self, *, system: str, user: str) -> str:
-        """
-        Non-streaming Ollama chat call.
-        Requires local ollama server running: ollama serve
-        """
         url = f"{self.ollama_base_url}/api/chat"
         payload: dict[str, Any] = {
             "model": self.ollama_model,
@@ -47,7 +114,7 @@ class LLMClient:
                 {"role": "user", "content": user},
             ],
         }
-        resp = requests.post(url, json=payload, timeout=120)
+        resp = requests.post(url, json=payload, timeout=180)
         resp.raise_for_status()
         data = resp.json()
         msg = data.get("message", {}) if isinstance(data, dict) else {}
@@ -61,7 +128,7 @@ class LLMClient:
             return (
                 "- **(MOCK) Summary**\n"
                 f"- Preview: {preview}...\n"
-                "- Notes: Replace mock with OpenAI by setting LLM_MOCK=0 and adding OPENAI_API_KEY.\n"
+                "- Notes: Replace mock with a real model by setting LLM_MOCK=0.\n"
             )
 
         system = (
@@ -74,7 +141,7 @@ class LLMClient:
             "Rules:\n"
             "- 4–8 bullet points\n"
             "- Preserve key facts and names\n"
-            "- If it’s comedic/banter, summarize the topic and notable beats\n\n"
+            "- Keep it concise\n\n"
             f"CHUNK:\n{chunk_text}"
         )
 
@@ -114,8 +181,6 @@ class LLMClient:
             "- 5–10 bullet points\n\n"
             "## Key Moments\n"
             "- 5–10 bullets (short)\n\n"
-            "## Notable Quotes (optional)\n"
-            "- up to 3\n\n"
             "CHUNK SUMMARIES:\n"
             f"{map_summaries_md}"
         )
@@ -145,7 +210,6 @@ class LLMClient:
             "- bullet\n\n"
             "Rules:\n"
             "- Chapter boundaries must be chronological\n"
-            "- Use timestamps within the video duration implied by the chunks\n"
             "- Keep titles short\n\n"
             f"{map_summaries_md}"
         )
@@ -177,16 +241,16 @@ class LLMClient:
         if self.provider == "ollama":
             text = self._ollama_chat(system=system, user=user)
         else:
-            resp = self.client.responses.create(model=self.model, input=[{"role": "system", "content": system}, {"role": "user", "content": user}])
+            resp = self.client.responses.create(
+                model=self.model,
+                input=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+            )
             text = resp.output_text or ""
 
         lines = [line.strip() for line in text.split("\n") if line.strip()]
         out: list[str] = []
         for line in lines:
-            if line.startswith("-"):
-                out.append(line.strip("- ").strip())
-            else:
-                out.append(line.strip())
+            out.append(line.strip("- ").strip() if line.startswith("-") else line.strip())
         return [x for x in out if x]
 
     def extract_action_items(self, summary_md: str) -> list[dict]:
@@ -213,11 +277,9 @@ class LLMClient:
             )
             text = (resp.output_text or "").strip()
 
-        # Best-effort JSON parse
         try:
             return json.loads(text)
         except Exception:
-            # fallback: treat as bullet list
             items: list[dict] = []
             for line in text.split("\n"):
                 s = line.strip().lstrip("-").strip()
@@ -228,24 +290,36 @@ class LLMClient:
     def answer_question(self, *, question: str, context_md: str) -> str:
         if self.mock:
             return (
-                "## (MOCK) Answer\n\n"
-                f"**Question:** {question}\n\n"
-                "Based on the retrieved transcript context, here’s a placeholder answer.\n\n"
-                "If you want real answers, set `LLM_MOCK=0` and provide `OPENAI_API_KEY`.\n"
+                "**(MOCK) Answer**\n\n"
+                f"Question: {question}\n\n"
+                "Based on the retrieved transcript context, here’s a placeholder answer.\n"
             )
 
+        # 🔧 Make output chat-friendly:
+        # - No headings (###)
+        # - No LaTeX
+        # - Prefer short paragraphs and bullet lists
         system = (
-            "You answer questions using ONLY the provided transcript context. "
-            "If the answer is not in the context, say you don't have enough info. "
-            "Be concise."
+            "You answer questions using ONLY the provided context.\n"
+            "Write for a chat UI.\n"
+            "Formatting rules:\n"
+            "- Use short paragraphs and/or bullet points.\n"
+            "- DO NOT use markdown headings (#, ##, ###).\n"
+            "- DO NOT use LaTeX (no \\frac, no \\sigma, no \\(...\\), no \\[...\\]).\n"
+            "- Keep it concise.\n"
+            "If the answer is not supported by the context, say what is missing and ask a clarifying question."
         )
+
         user = f"QUESTION:\n{question}\n\nCONTEXT:\n{context_md}\n"
 
         if self.provider == "ollama":
-            return self._ollama_chat(system=system, user=user)
+            raw = self._ollama_chat(system=system, user=user)
+        else:
+            resp = self.client.responses.create(
+                model=self.model,
+                input=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+            )
+            raw = (resp.output_text or "").strip()
 
-        resp = self.client.responses.create(
-            model=self.model,
-            input=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-        )
-        return (resp.output_text or "").strip()
+        # 🔧 Final cleanup so the UI doesn't show raw headings/latex artifacts.
+        return _postprocess_chat_answer(raw)
