@@ -95,7 +95,7 @@ export default function JobsPage() {
     return (
       <div className="p-6">
         <ErrorState
-          title="Failed to load jobs"
+          title="Failed to load videos"
           description="Please check your connection and try again."
           onRetry={() => refetch()}
           backHref="/"
@@ -110,20 +110,20 @@ export default function JobsPage() {
     return (
       <div className="p-6 space-y-4">
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-semibold">Jobs</h1>
+          <h1 className="text-xl font-semibold">Videos</h1>
           <Button asChild variant="secondary">
-            <Link href="/jobs/new">New job</Link>
+            <Link href="/jobs/new">New video</Link>
           </Button>
         </div>
 
         <div className="rounded-lg border p-6">
-          <div className="text-base font-semibold">No jobs yet</div>
+          <div className="text-base font-semibold">No videos yet</div>
           <div className="mt-1 text-sm text-muted-foreground">
             Paste a YouTube link to generate notes, transcript, and chat.
           </div>
           <div className="mt-4">
             <Button asChild>
-              <Link href="/jobs/new">Create your first job</Link>
+              <Link href="/jobs/new">Create your first video</Link>
             </Button>
           </div>
         </div>
@@ -135,14 +135,14 @@ export default function JobsPage() {
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold">Jobs</h1>
+          <h1 className="text-xl font-semibold">Videos</h1>
           <div className="text-sm text-muted-foreground">
-            {jobs.length} job{jobs.length === 1 ? "" : "s"}
+            {jobs.length} video{jobs.length === 1 ? "" : "s"}
           </div>
         </div>
 
         <Button asChild variant="secondary">
-          <Link href="/jobs/new">New job</Link>
+          <Link href="/jobs/new">New video</Link>
         </Button>
       </div>
 

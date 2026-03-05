@@ -13,7 +13,7 @@ type TopbarProps = {
   title?: string;
 };
 
-export function Topbar({ onOpenSidebar, title = "Jobs" }: TopbarProps) {
+export function Topbar({ onOpenSidebar, title = "Videos" }: TopbarProps) {
   return (
     <header className="flex h-14 items-center justify-between border-b px-4">
       <div className="flex items-center gap-2">

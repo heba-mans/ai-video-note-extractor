@@ -8,7 +8,6 @@ import { Input } from "@/components/ui/input";
 
 function isProbablyYouTubeUrl(url: string) {
   const u = url.trim();
-  // simple and safe: we’ll accept youtu.be and youtube.com
   return /^https?:\/\/(www\.)?(youtube\.com|youtu\.be)\//i.test(u);
 }
 
@@ -45,7 +44,7 @@ export default function NewJobPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <div>
-        <h1 className="text-xl font-semibold">New job</h1>
+        <h1 className="text-xl font-semibold">New video</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Paste a YouTube link to generate transcript, notes, and insights.
         </p>
@@ -66,7 +65,7 @@ export default function NewJobPage() {
 
         <div className="flex items-center gap-2">
           <Button type="submit" disabled={!isValid || createJob.isPending}>
-            {createJob.isPending ? "Creating..." : "Create job"}
+            {createJob.isPending ? "Creating..." : "Create video"}
           </Button>
           <Button
             type="button"
@@ -79,8 +78,8 @@ export default function NewJobPage() {
       </form>
 
       <div className="rounded-lg border p-4 text-sm text-muted-foreground">
-        Tip: Jobs can take a few minutes depending on video length. You’ll see
-        live progress in the next phase (FE-26).
+        Tip: Videos can take a few minutes depending on length. You’ll see live
+        progress while processing.
       </div>
     </div>
   );

@@ -70,13 +70,13 @@ export function JobDetailHeader({ jobId }: { jobId: string }) {
   if (job.error || !job.data) {
     return (
       <div className="rounded-lg border p-4 text-sm">
-        <div className="font-medium">Unable to load job</div>
+        <div className="font-medium">Unable to load video</div>
         <div className="mt-1 text-muted-foreground">
-          Please return to the jobs list and try again.
+          Please return to the videos list and try again.
         </div>
         <div className="mt-3">
           <Button asChild variant="secondary" size="sm">
-            <Link href="/jobs">Back to jobs</Link>
+            <Link href="/jobs">Back to videos</Link>
           </Button>
         </div>
       </div>
@@ -95,7 +95,7 @@ export function JobDetailHeader({ jobId }: { jobId: string }) {
   async function onCopyId() {
     try {
       await copyToClipboard(job.data!.id);
-      toast.success("Copied job ID");
+      toast.success("Copied ID");
     } catch {
       toast.error("Copy failed");
     }
@@ -117,7 +117,7 @@ export function JobDetailHeader({ jobId }: { jobId: string }) {
               size="icon"
               className="h-8 w-8"
               onClick={onCopyId}
-              aria-label="Copy job ID"
+              aria-label="Copy ID"
             >
               <Copy className="h-4 w-4" />
             </Button>
@@ -159,7 +159,7 @@ export function JobDetailHeader({ jobId }: { jobId: string }) {
 
       <div className="flex flex-wrap items-center gap-2">
         <Button asChild variant="secondary" size="sm">
-          <Link href="/jobs">All jobs</Link>
+          <Link href="/jobs">All videos</Link>
         </Button>
 
         {youtubeUrl ? (
