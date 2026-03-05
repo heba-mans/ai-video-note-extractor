@@ -4,7 +4,12 @@ from uuid import UUID
 
 from app.services.llm_client import LLMClient
 from app.services.retrieval_service import retrieve_top_k_chunks
-from app.db.repositories.chat import create_chat_session, get_chat_session, add_message, list_messages
+from app.db.repositories.chat import (
+    create_chat_session,
+    get_chat_session,
+    add_message,
+    list_messages,
+)
 from app.services.text_sanitize import strip_control_chars
 
 
@@ -52,6 +57,8 @@ def ask_video(
     history_limit: int = 10,
 ) -> tuple[UUID, str, list[dict]]:
     question = strip_control_chars(question).strip()
+    if not question:
+        raise ValueError("Question is empty")
 
     # ✅ Create or validate session
     if session_id is None:
@@ -65,12 +72,14 @@ def ask_video(
     # ✅ Persist user message
     add_message(db, session_id=session_id, role="user", content=question, citations_json=None)
 
+    # Retrieve top-k chunks
     hits = retrieve_top_k_chunks(db, job_id=job_id, query=question, k=k)
-    llm = LLMClient()
 
+    # Build compact history (exclude the message we just added)
     history = list_messages(db, session_id=session_id, limit=history_limit)
     history_md = strip_control_chars(build_history_md(history[:-1])).strip() if history else ""
 
+    # Build transcript context markdown
     if not hits:
         context_md = "(no relevant transcript found)"
     else:
@@ -81,8 +90,27 @@ def ask_video(
         combined_context += "## Chat History\n" + history_md + "\n\n"
     combined_context += "## Retrieved Transcript Context\n" + context_md
 
-    answer = strip_control_chars(llm.answer_question(question=question, context_md=combined_context)).strip()
+    # ✅ Use provider-aware LLMClient (OpenAI/Ollama/mock). If it fails, return a friendly error.
+    try:
+        llm = LLMClient()
+        raw_answer = llm.answer_question(question=question, context_md=combined_context)
+        answer = strip_control_chars(raw_answer).strip()
+        if not answer:
+            raise ValueError("LLM returned an empty answer")
+    except Exception as e:
+        # Persist an assistant error message (optional but helpful)
+        err_text = f"LLM failed to answer: {e}"
+        add_message(
+            db,
+            session_id=session_id,
+            role="assistant",
+            content=err_text,
+            citations_json=[],
+        )
+        # Raise ValueError so your API returns 400 with a clear detail
+        raise ValueError(err_text) from e
 
+    # Build citations in the shape the frontend expects
     citations: list[dict] = []
     for h in hits:
         start_s = float(h["start_seconds"])
